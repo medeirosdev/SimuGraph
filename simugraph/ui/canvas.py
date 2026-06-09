@@ -242,6 +242,26 @@ class Canvas:
                 text_rect = text_surf.get_rect(center=(sx, sy))
                 self.surface.blit(text_surf, text_rect)
 
+            # Render node weight/cost if non-zero
+            if node.weight != 0.0:
+                weight_str = f"{node.weight:.1f}" if node.weight % 1 != 0 else f"{int(node.weight)}"
+                if not hasattr(self, "font_weight"):
+                    try:
+                        self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
+                    except FileNotFoundError:
+                        self.font_weight = pygame.font.SysFont("monospace", 11)
+                
+                # Small badge above the node
+                w_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
+                ww, wh = w_surf.get_size()
+                wx_pos = sx
+                wy_pos = sy - s_radius - wh/2 - 6
+                
+                bg_rect = pygame.Rect(wx_pos - ww/2 - 4, wy_pos - wh/2 - 2, ww + 8, wh + 4)
+                pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
+                pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
+                self.surface.blit(w_surf, (wx_pos - ww/2, wy_pos - wh/2))
+
 
     # ------------------------------------------------------------------
     # Grid

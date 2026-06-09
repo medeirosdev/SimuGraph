@@ -100,6 +100,19 @@ class Inspector:
         lbl = self.font_body.render(toggle_text, True, toggle_txt_color)
         surface.blit(lbl, lbl.get_rect(center=self.pin_toggle_rect.center))
         
+        y_offset += 35
+
+        # Node weight (Edit button)
+        weight_title = self.font_body.render("Weight:", True, dim_color)
+        surface.blit(weight_title, (self.x + 15, y_offset))
+        
+        # Draw Edit button
+        self.weight_edit_rect = pygame.Rect(self.x + 90, y_offset - 2, 60, 22)
+        pygame.draw.rect(surface, cfg.THEME["panel_border"], self.weight_edit_rect, border_radius=4)
+        w_text = f"{node.weight:.1f}" if node.weight % 1 != 0 else f"{int(node.weight)}"
+        w_lbl = self.font_body.render(w_text, True, cfg.THEME["text"])
+        surface.blit(w_lbl, w_lbl.get_rect(center=self.weight_edit_rect.center))
+
         y_offset += 40
 
         # Node Color Picker
@@ -151,7 +164,7 @@ class Inspector:
         conn_title = self.font_body.render("Endpoints:", True, dim_color)
         surface.blit(conn_title, (self.x + 15, y_offset))
         y_offset += 20
-        conn_val = self.font_body.render(f" U: {edge.u[:8]}...\n V: {edge.v[:8]}...", True, text_color)
+        conn_val = self.font_body.render(f" From (u): {edge.u[:8]}...\n To (v):   {edge.v[:8]}...", True, text_color)
         self._render_multiline_text(surface, f" From (u): {edge.u[:8]}...\n To (v):   {edge.v[:8]}...", self.x + 15, y_offset, text_color)
         y_offset += 45
 
@@ -160,9 +173,16 @@ class Inspector:
         surface.blit(dir_title, (self.x + 15, y_offset))
         y_offset += 30
 
-        # Weight
-        weight_title = self.font_body.render(f"Weight:   {edge.weight:.2f}", True, text_color)
+        # Weight (Edit button)
+        weight_title = self.font_body.render("Weight:", True, dim_color)
         surface.blit(weight_title, (self.x + 15, y_offset))
+        
+        # Draw edit button
+        self.edge_weight_edit_rect = pygame.Rect(self.x + 90, y_offset - 2, 60, 22)
+        pygame.draw.rect(surface, cfg.THEME["panel_border"], self.edge_weight_edit_rect, border_radius=4)
+        ew_text = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
+        ew_lbl = self.font_body.render(ew_text, True, cfg.THEME["text"])
+        surface.blit(ew_lbl, ew_lbl.get_rect(center=self.edge_weight_edit_rect.center))
 
     def _render_multiline_text(self, surface: pygame.Surface, text: str, x: int, y: int, color: pygame.Color) -> None:
         lines = text.split("\n")
@@ -170,18 +190,26 @@ class Inspector:
             lbl = self.font_body.render(line, True, color)
             surface.blit(lbl, (x, y + i * 20))
 
-    def handle_click(self, mx: int, my: int, selected_node: Node | None) -> tuple[str, Any] | None:
+    def handle_click(self, mx: int, my: int, selected_node: Node | None, selected_edge: Edge | None) -> tuple[str, Any] | None:
         """
         Processes click in inspector.
         Returns:
-            ("pin", value) or ("color", color_tuple)
+            ("pin", value), ("color", color_tuple), ("node_weight", None), ("edge_weight", None)
         """
         if not self.rect.collidepoint(mx, my):
             return None
 
         # Check pin toggle click
-        if selected_node and self.pin_toggle_rect.collidepoint(mx, my):
+        if selected_node and hasattr(self, "pin_toggle_rect") and self.pin_toggle_rect.collidepoint(mx, my):
             return ("pin", not selected_node.pinned)
+
+        # Check node weight edit click
+        if selected_node and hasattr(self, "weight_edit_rect") and self.weight_edit_rect.collidepoint(mx, my):
+            return ("node_weight", None)
+
+        # Check edge weight edit click
+        if selected_edge and hasattr(self, "edge_weight_edit_rect") and self.edge_weight_edit_rect.collidepoint(mx, my):
+            return ("edge_weight", None)
 
         # Check color selection click
         if selected_node:

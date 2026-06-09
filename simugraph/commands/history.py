@@ -160,6 +160,40 @@ class ColorComponentsCommand(Command):
                 node.color = old_color
 
 
+class ChangeNodeWeightCommand(Command):
+    def __init__(self, node_id: str, old_weight: float, new_weight: float) -> None:
+        self.node_id = node_id
+        self.old_weight = old_weight
+        self.new_weight = new_weight
+
+    def execute(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.weight = self.new_weight
+
+    def undo(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.weight = self.old_weight
+
+
+class ChangeEdgeWeightCommand(Command):
+    def __init__(self, edge_id: str, old_weight: float, new_weight: float) -> None:
+        self.edge_id = edge_id
+        self.old_weight = old_weight
+        self.new_weight = new_weight
+
+    def execute(self, graph: Graph) -> None:
+        edge = graph.get_edge(self.edge_id)
+        if edge:
+            edge.weight = self.new_weight
+
+    def undo(self, graph: Graph) -> None:
+        edge = graph.get_edge(self.edge_id)
+        if edge:
+            edge.weight = self.old_weight
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 

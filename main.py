@@ -21,7 +21,7 @@ from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
     RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand,
-    ColorComponentsCommand
+    ColorComponentsCommand, ChangeNodeWeightCommand, ChangeEdgeWeightCommand
 )
 
 
@@ -231,13 +231,29 @@ def main() -> None:
                     continue
 
                 # Check inspector clicks second
-                ins_action = inspector.handle_click(mx, my, sel_node)
+                ins_action = inspector.handle_click(mx, my, sel_node, sel_edge)
                 if ins_action:
                     action_type, val = ins_action
                     if action_type == "pin" and sel_node:
                         history.execute(ToggleNodePinCommand(sel_node.id, sel_node.pinned, val), graph)
                     elif action_type == "color" and sel_node:
                         history.execute(ChangeNodeColorCommand(sel_node.id, sel_node.color, val), graph)
+                    elif action_type == "node_weight" and sel_node:
+                        active_dialog = InputDialog("Node Weight", initial_value=str(sel_node.weight), placeholder="Weight (number)")
+                        def make_node_weight_cb(node_to_edit):
+                            return lambda val_str: history.execute(
+                                ChangeNodeWeightCommand(node_to_edit.id, node_to_edit.weight, float(val_str) if val_str else 0.0),
+                                graph
+                            )
+                        dialog_callback = make_node_weight_cb(sel_node)
+                    elif action_type == "edge_weight" and sel_edge:
+                        active_dialog = InputDialog("Edge Weight", initial_value=str(sel_edge.weight), placeholder="Weight (number)")
+                        def make_edge_weight_cb(edge_to_edit):
+                            return lambda val_str: history.execute(
+                                ChangeEdgeWeightCommand(edge_to_edit.id, edge_to_edit.weight, float(val_str) if val_str else 1.0),
+                                graph
+                            )
+                        dialog_callback = make_edge_weight_cb(sel_edge)
                     continue
 
                 # Check sidebar clicks third

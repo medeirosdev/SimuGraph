@@ -19,6 +19,7 @@ class Node:
     radius: int = 22
     pinned: bool = False      # when True, spring layout ignores this node
     selected: bool = False
+    weight: float = 0.0
 
     def __post_init__(self) -> None:
         # Ensure color is always a plain tuple (not list)
