@@ -55,6 +55,7 @@ def main() -> None:
 
     active_tool = "node"  # "node", "edge", "remove", "select"
     dragging_node: Node | None = None
+    edge_start_node: Node | None = None
     snap_enabled = False
 
     running = True
@@ -71,7 +72,11 @@ def main() -> None:
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
-                    running = False
+                    # Cancel edge creation first, otherwise exit
+                    if edge_start_node:
+                        edge_start_node = None
+                    else:
+                        running = False
 
                 # Theme cycling: Ctrl+T
                 elif event.key == pygame.K_t and (event.mod & pygame.KMOD_CTRL):
@@ -86,12 +91,16 @@ def main() -> None:
                 # Shortcuts to switch tools
                 elif event.key == pygame.K_n:
                     active_tool = "node"
+                    edge_start_node = None
                 elif event.key == pygame.K_e:
                     active_tool = "edge"
+                    edge_start_node = None
                 elif event.key == pygame.K_r:
                     active_tool = "remove"
+                    edge_start_node = None
                 elif event.key == pygame.K_v:
                     active_tool = "select"
+                    edge_start_node = None
                 
                 # Toggle grid snap: S
                 elif event.key == pygame.K_s:
@@ -112,12 +121,23 @@ def main() -> None:
                                 break
                         
                         if clicked_node:
-                            dragging_node = clicked_node
                             if active_tool == "select":
                                 # Deselect others and select this one
                                 for node in graph.nodes():
                                     node.selected = False
                                 clicked_node.selected = True
+                                dragging_node = clicked_node
+                            elif active_tool == "edge":
+                                if edge_start_node is None:
+                                    edge_start_node = clicked_node
+                                else:
+                                    # Create the edge
+                                    from simugraph.core.edge import Edge
+                                    new_edge = Edge(u=edge_start_node.id, v=clicked_node.id)
+                                    graph.add_edge(new_edge)
+                                    edge_start_node = None
+                            else:
+                                dragging_node = clicked_node
                         else:
                             if active_tool == "node":
                                 # Avoid placing nodes on top of each other
@@ -134,6 +154,9 @@ def main() -> None:
                                 # Clear selection when clicking empty space
                                 for node in graph.nodes():
                                     node.selected = False
+                            # Clicking empty space cancels edge start
+                            elif active_tool == "edge":
+                                edge_start_node = None
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
@@ -161,7 +184,7 @@ def main() -> None:
         # ----------------------------------------------------------------
         bg = cfg.THEME["bg"]
         screen.fill(bg)
-        canvas.draw(camera, graph)
+        canvas.draw(camera, graph, edge_start_node)
         ui_surf.fill((0, 0, 0, 0))
 
         # ----------------------------------------------------------------

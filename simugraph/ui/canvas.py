@@ -35,11 +35,90 @@ class Canvas:
     # Public API
     # ------------------------------------------------------------------
 
-    def draw(self, camera: Camera, graph: Graph) -> None:
+    def draw(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
         """Clear the surface and redraw everything for one frame."""
         self.surface.fill((0, 0, 0, 0))
         self._draw_grid(camera)
-        # Future commits will call self._draw_edges(camera, graph) etc.
+        self._draw_edges(camera, graph, edge_start_node)
+        self._draw_nodes(camera, graph)
+
+    def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
+        """Draw all edges in the graph and the connection preview line."""
+        # Draw existing edges
+        for edge in graph.edges():
+            u_node = graph.get_node(edge.u)
+            v_node = graph.get_node(edge.v)
+            if not u_node or not v_node:
+                continue
+
+            su_x, sy_u = camera.world_to_screen(u_node.x, u_node.y)
+            sv_x, sy_v = camera.world_to_screen(v_node.x, v_node.y)
+
+            # Determine color
+            color = cfg.THEME["edge_selected"] if edge.selected else edge.color
+
+            # Simple straight line (curved parallel edges will be added in Phase 4)
+            pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
+
+        # Draw preview line if user is connecting two nodes
+        if edge_start_node:
+            su_x, sy_u = camera.world_to_screen(edge_start_node.x, edge_start_node.y)
+            mx, my = pygame.mouse.get_pos()
+            pygame.draw.line(self.surface, (*cfg.THEME["accent"][:3], 150), (su_x, sy_u), (mx, my), 2)
+
+    def _draw_nodes(self, camera: Camera, graph: Graph) -> None:
+        """Draw all nodes in the graph using anti-aliased primitives."""
+        import pygame.gfxdraw
+        if not hasattr(self, "font_node"):
+            try:
+                self.font_node = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_NODE)
+            except FileNotFoundError:
+                self.font_node = pygame.font.SysFont("monospace", cfg.FONT_SIZE_NODE)
+
+        # Get mouse position in world space for hover detection
+        mx, my = pygame.mouse.get_pos()
+        m_wx, m_wy = camera.screen_to_world(mx, my)
+
+        for node in graph.nodes():
+            s_radius = int(max(4.0, node.radius * camera.zoom))
+            sx_float, sy_float = camera.world_to_screen(node.x, node.y)
+            sx, sy = int(sx_float), int(sy_float)
+
+            # Visibility check
+            if not (0 - s_radius <= sx <= self.width + s_radius and 0 - s_radius <= sy <= self.height + s_radius):
+                continue
+
+            # Check if hovered
+            dist_to_mouse = ((node.x - m_wx)**2 + (node.y - m_wy)**2)**0.5
+            is_hovered = dist_to_mouse <= node.radius
+
+            if node.selected:
+                fill_color = cfg.THEME["node_selected"]
+                stroke_color = cfg.THEME["node_selected"]
+            elif is_hovered:
+                fill_color = cfg.THEME["node_hover"]
+                stroke_color = cfg.THEME["node_stroke"]
+            elif node.pinned:
+                fill_color = cfg.THEME["node_pinned"]
+                stroke_color = cfg.THEME["node_stroke"]
+            else:
+                fill_color = node.color
+                stroke_color = cfg.THEME["node_stroke"]
+
+            # Draw filled circle & smooth outer outline
+            pygame.gfxdraw.filled_circle(self.surface, sx, sy, s_radius, fill_color)
+            pygame.gfxdraw.aacircle(self.surface, sx, sy, s_radius, stroke_color)
+            
+            # Subtle inner ring if selected
+            if node.selected:
+                pygame.gfxdraw.aacircle(self.surface, sx, sy, max(1, s_radius - 2), (20, 20, 20))
+
+            # Render text label
+            if node.label:
+                text_surf = self.font_node.render(node.label, True, cfg.THEME["node_label"])
+                text_rect = text_surf.get_rect(center=(sx, sy))
+                self.surface.blit(text_surf, text_rect)
+
 
     # ------------------------------------------------------------------
     # Grid
