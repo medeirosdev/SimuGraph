@@ -19,7 +19,7 @@ from simugraph.camera import Camera
 from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
-    RenameNodeCommand
+    RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand
 )
 
 
@@ -205,9 +205,9 @@ def main() -> None:
                 if ins_action:
                     action_type, val = ins_action
                     if action_type == "pin" and sel_node:
-                        sel_node.pinned = val
+                        history.execute(ToggleNodePinCommand(sel_node.id, sel_node.pinned, val), graph)
                     elif action_type == "color" and sel_node:
-                        sel_node.color = val
+                        history.execute(ChangeNodeColorCommand(sel_node.id, sel_node.color, val), graph)
                     continue
 
                 # Check sidebar clicks third

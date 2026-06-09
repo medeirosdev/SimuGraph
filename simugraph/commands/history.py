@@ -107,6 +107,40 @@ class RenameNodeCommand(Command):
             node.label = self.old_label
 
 
+class ChangeNodeColorCommand(Command):
+    def __init__(self, node_id: str, old_color: tuple[int, int, int], new_color: tuple[int, int, int]) -> None:
+        self.node_id = node_id
+        self.old_color = old_color
+        self.new_color = new_color
+
+    def execute(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.color = self.new_color
+
+    def undo(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.color = self.old_color
+
+
+class ToggleNodePinCommand(Command):
+    def __init__(self, node_id: str, old_pinned: bool, new_pinned: bool) -> None:
+        self.node_id = node_id
+        self.old_pinned = old_pinned
+        self.new_pinned = new_pinned
+
+    def execute(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.pinned = self.new_pinned
+
+    def undo(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.pinned = self.old_pinned
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 
