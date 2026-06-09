@@ -11,6 +11,7 @@ from simugraph.ui.canvas import Canvas
 from simugraph.ui.sidebar import Sidebar
 from simugraph.ui.toolbar import Toolbar
 from simugraph.ui.inspector import Inspector
+from simugraph.ui.hud import HUD
 from simugraph.ui.dialog import InputDialog
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
@@ -68,9 +69,6 @@ def main() -> None:
     canvas = Canvas(cfg.WINDOW_W, cfg.WINDOW_H)
     ui_surf     = pygame.Surface((cfg.WINDOW_W, cfg.WINDOW_H), pygame.SRCALPHA)
 
-    font_ui  = _load_font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_UI)
-    font_hud = _load_font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_HUD)
-
     graph  = Graph()
     camera = Camera(cfg.WINDOW_W, cfg.WINDOW_H)
 
@@ -86,6 +84,7 @@ def main() -> None:
     sidebar = Sidebar()
     toolbar = Toolbar()
     inspector = Inspector()
+    hud = HUD()
     history = CommandHistory()
     
     # Dialog management
@@ -404,30 +403,12 @@ def main() -> None:
         sel_edge = selected_edges[0] if selected_edges else None
         inspector.draw(ui_surf, sel_node, sel_edge)
         
+        # Draw HUD status bar
+        hud.draw(ui_surf, active_tool, snap_enabled, directed_edges, graph, camera, clock.get_fps())
+        
         # Draw Modal Dialogs
         if active_dialog is not None:
             active_dialog.draw(ui_surf)
-
-        # ----------------------------------------------------------------
-        # HUD — bottom status bar
-        # ----------------------------------------------------------------
-        hud_text = (
-            f"  Tool: {active_tool.upper()}  |  "
-            f"Snap: {'ON' if snap_enabled else 'OFF'}  |  "
-            f"Dir: {'ON' if directed_edges else 'OFF'}  |  "
-            f"Nodes: {graph.node_count()}  |  "
-            f"Edges: {graph.edge_count()}  |  "
-            f"Zoom: {camera.zoom_percent()}%  |  "
-            f"Theme: {cfg.ACTIVE_THEME_NAME}  |  "
-            f"FPS: {clock.get_fps():.0f}"
-        )
-        hud_color = cfg.THEME["hud_bg"]
-        hud_rect = pygame.Rect(0, cfg.WINDOW_H - cfg.HUD_H, cfg.WINDOW_W, cfg.HUD_H)
-        hud_surf = pygame.Surface((cfg.WINDOW_W, cfg.HUD_H), pygame.SRCALPHA)
-        hud_surf.fill(hud_color)
-        label = font_hud.render(hud_text, True, cfg.THEME["text_dim"])
-        hud_surf.blit(label, (8, (cfg.HUD_H - label.get_height()) // 2))
-        ui_surf.blit(hud_surf, (0, cfg.WINDOW_H - cfg.HUD_H))
 
         # ----------------------------------------------------------------
         # Compose and flip
