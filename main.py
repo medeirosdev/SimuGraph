@@ -7,6 +7,7 @@ from __future__ import annotations
 import sys
 import pygame
 import simugraph.settings as cfg
+from simugraph.ui.canvas import Canvas
 from simugraph.core.graph import Graph
 from simugraph.camera import Camera
 
@@ -27,7 +28,7 @@ def main() -> None:
     clock = pygame.time.Clock()
 
     # Sub-surfaces (alpha-capable layers blitted in order each frame)
-    canvas_surf = pygame.Surface((cfg.WINDOW_W, cfg.WINDOW_H), pygame.SRCALPHA)
+    canvas = Canvas(cfg.WINDOW_W, cfg.WINDOW_H)
     ui_surf     = pygame.Surface((cfg.WINDOW_W, cfg.WINDOW_H), pygame.SRCALPHA)
 
     font_ui  = _load_font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_UI)
@@ -73,7 +74,7 @@ def main() -> None:
         # ----------------------------------------------------------------
         bg = cfg.THEME["bg"]
         screen.fill(bg)
-        canvas_surf.fill((0, 0, 0, 0))
+        canvas.draw(camera, graph)
         ui_surf.fill((0, 0, 0, 0))
 
         # ----------------------------------------------------------------
@@ -97,7 +98,7 @@ def main() -> None:
         # ----------------------------------------------------------------
         # Compose and flip
         # ----------------------------------------------------------------
-        screen.blit(canvas_surf, (0, 0))
+        screen.blit(canvas.surface, (0, 0))
         screen.blit(ui_surf, (0, 0))
         pygame.display.flip()
 
