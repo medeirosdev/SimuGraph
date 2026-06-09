@@ -8,6 +8,7 @@ import sys
 import pygame
 import simugraph.settings as cfg
 from simugraph.ui.canvas import Canvas
+from simugraph.ui.sidebar import Sidebar
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.camera import Camera
@@ -78,6 +79,7 @@ def main() -> None:
     
     is_panning = False
     
+    sidebar = Sidebar()
     history = CommandHistory()
 
     running = True
@@ -151,9 +153,18 @@ def main() -> None:
                     directed_edges = not directed_edges
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
+                mx, my = event.pos
+                
+                # Check sidebar clicks first
+                clicked_tool = sidebar.handle_click(mx, my)
+                if clicked_tool:
+                    active_tool = clicked_tool
+                    edge_start_node = None
+                    continue
+
                 if event.button == 1:  # Left click
-                    mx, my = event.pos
-                    if my < cfg.WINDOW_H - cfg.HUD_H:
+                    # Canvas interaction bounds
+                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         wx, wy = camera.screen_to_world(mx, my)
                         
                         # Check if clicked on a node
@@ -223,11 +234,11 @@ def main() -> None:
                                     history.execute(RemoveEdgeCommand(to_remove), graph)
 
                 elif event.button == 2:  # Middle click starts panning
-                    is_panning = True
+                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
+                        is_panning = True
 
                 elif event.button == 3:  # Right click deletes nodes / edges in any tool
-                    mx, my = event.pos
-                    if my < cfg.WINDOW_H - cfg.HUD_H:
+                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         wx, wy = camera.screen_to_world(mx, my)
                         
                         # Find clicked node
@@ -296,6 +307,9 @@ def main() -> None:
         screen.fill(bg)
         canvas.draw(camera, graph, edge_start_node)
         ui_surf.fill((0, 0, 0, 0))
+        
+        # Draw Sidebar
+        sidebar.draw(ui_surf, active_tool)
 
         # ----------------------------------------------------------------
         # HUD — bottom status bar
