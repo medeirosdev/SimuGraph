@@ -9,6 +9,7 @@ import pygame
 import simugraph.settings as cfg
 from simugraph.ui.canvas import Canvas
 from simugraph.core.graph import Graph
+from simugraph.core.node import Node
 from simugraph.camera import Camera
 
 
@@ -18,6 +19,21 @@ def _load_font(path: str, size: int) -> pygame.font.Font:
         return pygame.font.Font(path, size)
     except FileNotFoundError:
         return pygame.font.SysFont("monospace", size)
+
+
+def get_next_node_label(graph: Graph) -> str:
+    used = {n.label for n in graph.nodes() if n.label}
+    for i in range(26):
+        label = chr(65 + i)
+        if label not in used:
+            return label
+    suffix = 1
+    while True:
+        for i in range(26):
+            label = f"{chr(65 + i)}{suffix}"
+            if label not in used:
+                return label
+        suffix += 1
 
 
 def main() -> None:
@@ -36,6 +52,9 @@ def main() -> None:
 
     graph  = Graph()
     camera = Camera(cfg.WINDOW_W, cfg.WINDOW_H)
+
+    active_tool = "node"  # "node", "edge", "remove", "select"
+    dragging_node: Node | None = None
 
     running = True
     while running:
@@ -63,6 +82,34 @@ def main() -> None:
                 elif event.key == pygame.K_0:
                     camera.reset_zoom()
 
+                # Shortcuts to switch tools
+                elif event.key == pygame.K_n:
+                    active_tool = "node"
+                elif event.key == pygame.K_e:
+                    active_tool = "edge"
+                elif event.key == pygame.K_r:
+                    active_tool = "remove"
+                elif event.key == pygame.K_v:
+                    active_tool = "select"
+
+            elif event.type == pygame.MOUSEBUTTONDOWN:
+                if event.button == 1:  # Left click
+                    mx, my = event.pos
+                    # Only interact if not in UI areas (we'll define boundaries later, for now full screen except HUD)
+                    if my < cfg.WINDOW_H - cfg.HUD_H:
+                        wx, wy = camera.screen_to_world(mx, my)
+                        if active_tool == "node":
+                            # Avoid placing nodes on top of each other
+                            overlap = False
+                            for node in graph.nodes():
+                                dist = ((node.x - wx)**2 + (node.y - wy)**2)**0.5
+                                if dist < node.radius * 2:
+                                    overlap = True
+                                    break
+                            if not overlap:
+                                new_node = Node(x=wx, y=wy, label=get_next_node_label(graph))
+                                graph.add_node(new_node)
+
             # Scroll-wheel zoom centred on mouse
             elif event.type == pygame.MOUSEWHEEL:
                 mx, my = pygame.mouse.get_pos()
@@ -81,7 +128,8 @@ def main() -> None:
         # HUD — bottom status bar
         # ----------------------------------------------------------------
         hud_text = (
-            f"  Nodes: {graph.node_count()}  |  "
+            f"  Tool: {active_tool.upper()}  |  "
+            f"Nodes: {graph.node_count()}  |  "
             f"Edges: {graph.edge_count()}  |  "
             f"Zoom: {camera.zoom_percent()}%  |  "
             f"Theme: {cfg.ACTIVE_THEME_NAME}  |  "
