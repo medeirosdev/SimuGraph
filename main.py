@@ -36,6 +36,18 @@ def get_next_node_label(graph: Graph) -> str:
         suffix += 1
 
 
+def distance_to_segment(px: float, py: float, ax: float, ay: float, bx: float, by: float) -> float:
+    """Distance from point P to segment AB in world space."""
+    l2 = (ax - bx)**2 + (ay - by)**2
+    if l2 == 0:
+        return ((px - ax)**2 + (py - ay)**2)**0.5
+    t = ((px - ax) * (bx - ax) + (py - ay) * (by - ay)) / l2
+    t = max(0.0, min(1.0, t))
+    proj_x = ax + t * (bx - ax)
+    proj_y = ay + t * (by - ay)
+    return ((px - proj_x)**2 + (py - proj_y)**2)**0.5
+
+
 def main() -> None:
     pygame.init()
     pygame.display.set_caption(cfg.WINDOW_TITLE)
@@ -141,6 +153,8 @@ def main() -> None:
                                     new_edge = Edge(u=edge_start_node.id, v=clicked_node.id, directed=directed_edges)
                                     graph.add_edge(new_edge)
                                     edge_start_node = None
+                            elif active_tool == "remove":
+                                graph.remove_node(clicked_node.id)
                             else:
                                 dragging_node = clicked_node
                         else:
@@ -162,6 +176,52 @@ def main() -> None:
                             # Clicking empty space cancels edge start
                             elif active_tool == "edge":
                                 edge_start_node = None
+                            elif active_tool == "remove":
+                                # Check if clicked on an edge
+                                threshold = 8.0 / camera.zoom
+                                to_remove = None
+                                for edge in graph.edges():
+                                    u = graph.get_node(edge.u)
+                                    v = graph.get_node(edge.v)
+                                    if u and v:
+                                        d = distance_to_segment(wx, wy, u.x, u.y, v.x, v.y)
+                                        if d <= threshold:
+                                            to_remove = edge.id
+                                            break
+                                if to_remove:
+                                    graph.remove_edge(to_remove)
+
+                elif event.button == 3:  # Right click deletes nodes / edges in any tool
+                    mx, my = event.pos
+                    if my < cfg.WINDOW_H - cfg.HUD_H:
+                        wx, wy = camera.screen_to_world(mx, my)
+                        
+                        # Find clicked node
+                        clicked_node = None
+                        for node in graph.nodes():
+                            dist = ((node.x - wx)**2 + (node.y - wy)**2)**0.5
+                            if dist <= node.radius:
+                                clicked_node = node
+                                break
+                        
+                        if clicked_node:
+                            graph.remove_node(clicked_node.id)
+                            if edge_start_node == clicked_node:
+                                edge_start_node = None
+                        else:
+                            # Try to find clicked edge
+                            threshold = 8.0 / camera.zoom
+                            to_remove = None
+                            for edge in graph.edges():
+                                u = graph.get_node(edge.u)
+                                v = graph.get_node(edge.v)
+                                if u and v:
+                                    d = distance_to_segment(wx, wy, u.x, u.y, v.x, v.y)
+                                    if d <= threshold:
+                                        to_remove = edge.id
+                                        break
+                            if to_remove:
+                                graph.remove_edge(to_remove)
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
