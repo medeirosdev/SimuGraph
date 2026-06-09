@@ -55,6 +55,7 @@ def main() -> None:
 
     active_tool = "node"  # "node", "edge", "remove", "select"
     dragging_node: Node | None = None
+    snap_enabled = False
 
     running = True
     while running:
@@ -91,24 +92,63 @@ def main() -> None:
                     active_tool = "remove"
                 elif event.key == pygame.K_v:
                     active_tool = "select"
+                
+                # Toggle grid snap: S
+                elif event.key == pygame.K_s:
+                    snap_enabled = not snap_enabled
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
                     mx, my = event.pos
-                    # Only interact if not in UI areas (we'll define boundaries later, for now full screen except HUD)
                     if my < cfg.WINDOW_H - cfg.HUD_H:
                         wx, wy = camera.screen_to_world(mx, my)
-                        if active_tool == "node":
-                            # Avoid placing nodes on top of each other
-                            overlap = False
-                            for node in graph.nodes():
-                                dist = ((node.x - wx)**2 + (node.y - wy)**2)**0.5
-                                if dist < node.radius * 2:
-                                    overlap = True
-                                    break
-                            if not overlap:
-                                new_node = Node(x=wx, y=wy, label=get_next_node_label(graph))
-                                graph.add_node(new_node)
+                        
+                        # Check if clicked on a node
+                        clicked_node = None
+                        for node in graph.nodes():
+                            dist = ((node.x - wx)**2 + (node.y - wy)**2)**0.5
+                            if dist <= node.radius:
+                                clicked_node = node
+                                break
+                        
+                        if clicked_node:
+                            dragging_node = clicked_node
+                            if active_tool == "select":
+                                # Deselect others and select this one
+                                for node in graph.nodes():
+                                    node.selected = False
+                                clicked_node.selected = True
+                        else:
+                            if active_tool == "node":
+                                # Avoid placing nodes on top of each other
+                                overlap = False
+                                for node in graph.nodes():
+                                    dist = ((node.x - wx)**2 + (node.y - wy)**2)**0.5
+                                    if dist < node.radius * 2:
+                                        overlap = True
+                                        break
+                                if not overlap:
+                                    new_node = Node(x=wx, y=wy, label=get_next_node_label(graph))
+                                    graph.add_node(new_node)
+                            elif active_tool == "select":
+                                # Clear selection when clicking empty space
+                                for node in graph.nodes():
+                                    node.selected = False
+
+            elif event.type == pygame.MOUSEBUTTONUP:
+                if event.button == 1:
+                    dragging_node = None
+
+            elif event.type == pygame.MOUSEMOTION:
+                if dragging_node:
+                    mx, my = event.pos
+                    wx, wy = camera.screen_to_world(mx, my)
+                    if snap_enabled:
+                        dragging_node.x = round(wx / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
+                        dragging_node.y = round(wy / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
+                    else:
+                        dragging_node.x = wx
+                        dragging_node.y = wy
 
             # Scroll-wheel zoom centred on mouse
             elif event.type == pygame.MOUSEWHEEL:
@@ -129,6 +169,7 @@ def main() -> None:
         # ----------------------------------------------------------------
         hud_text = (
             f"  Tool: {active_tool.upper()}  |  "
+            f"Snap: {'ON' if snap_enabled else 'OFF'}  |  "
             f"Nodes: {graph.node_count()}  |  "
             f"Edges: {graph.edge_count()}  |  "
             f"Zoom: {camera.zoom_percent()}%  |  "
