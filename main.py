@@ -57,6 +57,7 @@ def main() -> None:
     dragging_node: Node | None = None
     edge_start_node: Node | None = None
     snap_enabled = False
+    directed_edges = False
 
     running = True
     while running:
@@ -105,6 +106,10 @@ def main() -> None:
                 # Toggle grid snap: S
                 elif event.key == pygame.K_s:
                     snap_enabled = not snap_enabled
+                
+                # Toggle directed edges: D
+                elif event.key == pygame.K_d:
+                    directed_edges = not directed_edges
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 if event.button == 1:  # Left click
@@ -133,7 +138,7 @@ def main() -> None:
                                 else:
                                     # Create the edge
                                     from simugraph.core.edge import Edge
-                                    new_edge = Edge(u=edge_start_node.id, v=clicked_node.id)
+                                    new_edge = Edge(u=edge_start_node.id, v=clicked_node.id, directed=directed_edges)
                                     graph.add_edge(new_edge)
                                     edge_start_node = None
                             else:
@@ -193,6 +198,7 @@ def main() -> None:
         hud_text = (
             f"  Tool: {active_tool.upper()}  |  "
             f"Snap: {'ON' if snap_enabled else 'OFF'}  |  "
+            f"Dir: {'ON' if directed_edges else 'OFF'}  |  "
             f"Nodes: {graph.node_count()}  |  "
             f"Edges: {graph.edge_count()}  |  "
             f"Zoom: {camera.zoom_percent()}%  |  "

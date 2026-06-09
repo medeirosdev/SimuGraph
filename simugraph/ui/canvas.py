@@ -44,6 +44,7 @@ class Canvas:
 
     def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
         """Draw all edges in the graph and the connection preview line."""
+        import math
         # Draw existing edges
         for edge in graph.edges():
             u_node = graph.get_node(edge.u)
@@ -55,10 +56,36 @@ class Canvas:
             sv_x, sy_v = camera.world_to_screen(v_node.x, v_node.y)
 
             # Determine color
-            color = cfg.THEME["edge_selected"] if edge.selected else edge.color
+            color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
 
             # Simple straight line (curved parallel edges will be added in Phase 4)
             pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
+
+            # Draw arrowhead for directed edges
+            if edge.directed:
+                dx = sv_x - su_x
+                dy = sy_v - sy_u
+                dist = (dx**2 + dy**2)**0.5
+                if dist > 0:
+                    ux = dx / dist
+                    uy = dy / dist
+                    # Stop at the boundary of the target node
+                    target_radius = max(4.0, v_node.radius * camera.zoom)
+                    tx = sv_x - ux * target_radius
+                    ty = sy_v - uy * target_radius
+
+                    # Calculate wing tips
+                    angle = math.atan2(dy, dx)
+                    arrow_len = max(6.0, 10.0 * camera.zoom)
+                    arrow_len = min(15.0, arrow_len)  # clamp to nice size range
+                    arrow_angle = 0.4 # ~23 degrees
+                    
+                    lx = tx - arrow_len * math.cos(angle - arrow_angle)
+                    ly = ty - arrow_len * math.sin(angle - arrow_angle)
+                    rx = tx - arrow_len * math.cos(angle + arrow_angle)
+                    ry = ty - arrow_len * math.sin(angle + arrow_angle)
+
+                    pygame.draw.polygon(self.surface, color, [(tx, ty), (lx, ly), (rx, ry)])
 
         # Draw preview line if user is connecting two nodes
         if edge_start_node:
