@@ -10,6 +10,7 @@ import simugraph.settings as cfg
 from simugraph.ui.canvas import Canvas
 from simugraph.ui.sidebar import Sidebar
 from simugraph.ui.toolbar import Toolbar
+from simugraph.ui.inspector import Inspector
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.camera import Camera
@@ -82,6 +83,7 @@ def main() -> None:
     
     sidebar = Sidebar()
     toolbar = Toolbar()
+    inspector = Inspector()
     history = CommandHistory()
 
     running = True
@@ -157,6 +159,12 @@ def main() -> None:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
                 
+                # Fetch currently selected node
+                selected_nodes = [n for n in graph.nodes() if n.selected]
+                selected_edges = [e for e in graph.edges() if e.selected]
+                sel_node = selected_nodes[0] if selected_nodes else None
+                sel_edge = selected_edges[0] if selected_edges else None
+
                 # Check toolbar clicks first
                 menu_action = toolbar.handle_click(mx, my)
                 if menu_action:
@@ -173,7 +181,17 @@ def main() -> None:
                 if toolbar.active_menu_id:
                     continue
 
-                # Check sidebar clicks second
+                # Check inspector clicks second
+                ins_action = inspector.handle_click(mx, my, sel_node)
+                if ins_action:
+                    action_type, val = ins_action
+                    if action_type == "pin" and sel_node:
+                        sel_node.pinned = val
+                    elif action_type == "color" and sel_node:
+                        sel_node.color = val
+                    continue
+
+                # Check sidebar clicks third
                 clicked_tool = sidebar.handle_click(mx, my)
                 if clicked_tool:
                     active_tool = clicked_tool
@@ -182,7 +200,7 @@ def main() -> None:
 
                 if event.button == 1:  # Left click
                     # Canvas interaction bounds
-                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
+                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W - cfg.INSPECTOR_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         wx, wy = camera.screen_to_world(mx, my)
                         
                         # Check if clicked on a node
@@ -252,11 +270,11 @@ def main() -> None:
                                     history.execute(RemoveEdgeCommand(to_remove), graph)
 
                 elif event.button == 2:  # Middle click starts panning
-                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
+                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W - cfg.INSPECTOR_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         is_panning = True
 
                 elif event.button == 3:  # Right click deletes nodes / edges in any tool
-                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
+                    if cfg.SIDEBAR_W < mx < cfg.WINDOW_W - cfg.INSPECTOR_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         wx, wy = camera.screen_to_world(mx, my)
                         
                         # Find clicked node
@@ -331,6 +349,13 @@ def main() -> None:
         
         # Draw Toolbar
         toolbar.draw(ui_surf)
+
+        # Draw Inspector
+        selected_nodes = [n for n in graph.nodes() if n.selected]
+        selected_edges = [e for e in graph.edges() if e.selected]
+        sel_node = selected_nodes[0] if selected_nodes else None
+        sel_edge = selected_edges[0] if selected_edges else None
+        inspector.draw(ui_surf, sel_node, sel_edge)
 
         # ----------------------------------------------------------------
         # HUD — bottom status bar
