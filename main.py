@@ -259,10 +259,21 @@ def main() -> None:
                                 if edge_start_node is None:
                                     edge_start_node = clicked_node
                                 else:
-                                    # Create the edge
-                                    from simugraph.core.edge import Edge
-                                    new_edge = Edge(u=edge_start_node.id, v=clicked_node.id, directed=directed_edges)
-                                    history.execute(AddEdgeCommand(new_edge), graph)
+                                    # Open modal for edge weight
+                                    active_dialog = InputDialog("Edge Weight", initial_value="1.0", placeholder="Weight (number)")
+                                    
+                                    def make_edge_cb(u_node, v_node, dir_flag):
+                                        def cb(val_str):
+                                            try:
+                                                weight_val = float(val_str)
+                                            except ValueError:
+                                                weight_val = 1.0
+                                            from simugraph.core.edge import Edge
+                                            new_edge = Edge(u=u_node.id, v=v_node.id, weight=weight_val, directed=dir_flag)
+                                            history.execute(AddEdgeCommand(new_edge), graph)
+                                        return cb
+
+                                    dialog_callback = make_edge_cb(edge_start_node, clicked_node, directed_edges)
                                     edge_start_node = None
                             elif active_tool == "remove":
                                 # Remove node and its incident edges (stored for undo)

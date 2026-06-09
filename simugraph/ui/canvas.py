@@ -61,6 +61,28 @@ class Canvas:
             # Simple straight line (curved parallel edges will be added in Phase 4)
             pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
 
+            # Draw edge weight
+            mid_x = (su_x + sv_x) / 2
+            mid_y = (sy_u + sy_v) / 2
+            weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
+            
+            if not hasattr(self, "font_weight"):
+                try:
+                    self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
+                except FileNotFoundError:
+                    self.font_weight = pygame.font.SysFont("monospace", 11)
+
+            text_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
+            tw, th = text_surf.get_size()
+            
+            # Rounded rect background for the weight
+            bg_rect = pygame.Rect(mid_x - tw/2 - 4, mid_y - th/2 - 2, tw + 8, th + 4)
+            
+            # Since surface has alpha, we can draw directly with transparency
+            pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
+            pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
+            self.surface.blit(text_surf, (mid_x - tw/2, mid_y - th/2))
+
             # Draw arrowhead for directed edges
             if edge.directed:
                 dx = sv_x - su_x
