@@ -90,6 +90,23 @@ class MoveNodeCommand(Command):
             node.x, node.y = self.old_pos
 
 
+class RenameNodeCommand(Command):
+    def __init__(self, node_id: str, old_label: str, new_label: str) -> None:
+        self.node_id = node_id
+        self.old_label = old_label
+        self.new_label = new_label
+
+    def execute(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.label = self.new_label
+
+    def undo(self, graph: Graph) -> None:
+        node = graph.get_node(self.node_id)
+        if node:
+            node.label = self.old_label
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 

@@ -11,12 +11,14 @@ from simugraph.ui.canvas import Canvas
 from simugraph.ui.sidebar import Sidebar
 from simugraph.ui.toolbar import Toolbar
 from simugraph.ui.inspector import Inspector
+from simugraph.ui.dialog import InputDialog
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.camera import Camera
 from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
-    AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand
+    AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
+    RenameNodeCommand
 )
 
 
@@ -85,6 +87,14 @@ def main() -> None:
     toolbar = Toolbar()
     inspector = Inspector()
     history = CommandHistory()
+    
+    # Dialog management
+    active_dialog: InputDialog | None = None
+    dialog_callback = None
+    
+    # Double-click detection
+    last_click_time = 0
+    last_clicked_node_id: str | None = None
 
     running = True
     while running:
@@ -96,6 +106,16 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                continue
+
+            # Route events to active modal dialog if open
+            if active_dialog is not None:
+                done, res = active_dialog.handle_event(event)
+                if done:
+                    if res is not None and dialog_callback is not None:
+                        dialog_callback(res)
+                    active_dialog = None
+                    dialog_callback = None
                 continue
 
             if event.type == pygame.KEYDOWN:
@@ -212,6 +232,22 @@ def main() -> None:
                                 break
                         
                         if clicked_node:
+                            # Double-click rename detection
+                            now = pygame.time.get_ticks()
+                            if now - last_click_time < 300 and clicked_node.id == last_clicked_node_id:
+                                # Start rename dialog
+                                active_dialog = InputDialog("Rename Node", initial_value=clicked_node.label, placeholder="New Label")
+                                def make_rename_cb(node_to_rename):
+                                    return lambda val: history.execute(RenameNodeCommand(node_to_rename.id, node_to_rename.label, val), graph)
+                                dialog_callback = make_rename_cb(clicked_node)
+                                dragging_node = None
+                                last_clicked_node_id = None
+                                last_click_time = 0
+                                continue
+                            
+                            last_click_time = now
+                            last_clicked_node_id = clicked_node.id
+
                             if active_tool == "select":
                                 # Deselect others and select this one
                                 for node in graph.nodes():
@@ -356,6 +392,10 @@ def main() -> None:
         sel_node = selected_nodes[0] if selected_nodes else None
         sel_edge = selected_edges[0] if selected_edges else None
         inspector.draw(ui_surf, sel_node, sel_edge)
+        
+        # Draw Modal Dialogs
+        if active_dialog is not None:
+            active_dialog.draw(ui_surf)
 
         # ----------------------------------------------------------------
         # HUD — bottom status bar
