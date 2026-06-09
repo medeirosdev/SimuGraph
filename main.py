@@ -11,6 +11,10 @@ from simugraph.ui.canvas import Canvas
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.camera import Camera
+from simugraph.commands.history import (
+    CommandHistory, AddNodeCommand, RemoveNodeCommand,
+    AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand
+)
 
 
 def _load_font(path: str, size: int) -> pygame.font.Font:
@@ -67,9 +71,12 @@ def main() -> None:
 
     active_tool = "node"  # "node", "edge", "remove", "select"
     dragging_node: Node | None = None
+    drag_start_pos: tuple[float, float] | None = None
     edge_start_node: Node | None = None
     snap_enabled = False
     directed_edges = False
+    
+    history = CommandHistory()
 
     running = True
     while running:
@@ -90,6 +97,14 @@ def main() -> None:
                         edge_start_node = None
                     else:
                         running = False
+
+                # Undo: Ctrl+Z
+                elif event.key == pygame.K_z and (event.mod & pygame.KMOD_CTRL):
+                    history.undo(graph)
+                
+                # Redo: Ctrl+Y
+                elif event.key == pygame.K_y and (event.mod & pygame.KMOD_CTRL):
+                    history.redo(graph)
 
                 # Theme cycling: Ctrl+T
                 elif event.key == pygame.K_t and (event.mod & pygame.KMOD_CTRL):
@@ -144,6 +159,7 @@ def main() -> None:
                                     node.selected = False
                                 clicked_node.selected = True
                                 dragging_node = clicked_node
+                                drag_start_pos = (clicked_node.x, clicked_node.y)
                             elif active_tool == "edge":
                                 if edge_start_node is None:
                                     edge_start_node = clicked_node
@@ -151,12 +167,15 @@ def main() -> None:
                                     # Create the edge
                                     from simugraph.core.edge import Edge
                                     new_edge = Edge(u=edge_start_node.id, v=clicked_node.id, directed=directed_edges)
-                                    graph.add_edge(new_edge)
+                                    history.execute(AddEdgeCommand(new_edge), graph)
                                     edge_start_node = None
                             elif active_tool == "remove":
-                                graph.remove_node(clicked_node.id)
+                                # Remove node and its incident edges (stored for undo)
+                                incident_edges = graph.edges_of(clicked_node.id)
+                                history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
                             else:
                                 dragging_node = clicked_node
+                                drag_start_pos = (clicked_node.x, clicked_node.y)
                         else:
                             if active_tool == "node":
                                 # Avoid placing nodes on top of each other
@@ -168,7 +187,7 @@ def main() -> None:
                                         break
                                 if not overlap:
                                     new_node = Node(x=wx, y=wy, label=get_next_node_label(graph))
-                                    graph.add_node(new_node)
+                                    history.execute(AddNodeCommand(new_node), graph)
                             elif active_tool == "select":
                                 # Clear selection when clicking empty space
                                 for node in graph.nodes():
@@ -186,10 +205,10 @@ def main() -> None:
                                     if u and v:
                                         d = distance_to_segment(wx, wy, u.x, u.y, v.x, v.y)
                                         if d <= threshold:
-                                            to_remove = edge.id
+                                            to_remove = edge
                                             break
                                 if to_remove:
-                                    graph.remove_edge(to_remove)
+                                    history.execute(RemoveEdgeCommand(to_remove), graph)
 
                 elif event.button == 3:  # Right click deletes nodes / edges in any tool
                     mx, my = event.pos
@@ -205,7 +224,8 @@ def main() -> None:
                                 break
                         
                         if clicked_node:
-                            graph.remove_node(clicked_node.id)
+                            incident_edges = graph.edges_of(clicked_node.id)
+                            history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
                             if edge_start_node == clicked_node:
                                 edge_start_node = None
                         else:
@@ -218,14 +238,20 @@ def main() -> None:
                                 if u and v:
                                     d = distance_to_segment(wx, wy, u.x, u.y, v.x, v.y)
                                     if d <= threshold:
-                                        to_remove = edge.id
+                                        to_remove = edge
                                         break
                             if to_remove:
-                                graph.remove_edge(to_remove)
+                                history.execute(RemoveEdgeCommand(to_remove), graph)
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
+                    if dragging_node and drag_start_pos:
+                        # If node has moved, register the MoveNodeCommand in history
+                        end_pos = (dragging_node.x, dragging_node.y)
+                        if end_pos != drag_start_pos:
+                            history.push(MoveNodeCommand(dragging_node.id, drag_start_pos, end_pos))
                     dragging_node = None
+                    drag_start_pos = None
 
             elif event.type == pygame.MOUSEMOTION:
                 if dragging_node:
