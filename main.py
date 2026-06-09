@@ -13,6 +13,7 @@ from simugraph.ui.toolbar import Toolbar
 from simugraph.ui.inspector import Inspector
 from simugraph.ui.hud import HUD
 from simugraph.ui.dialog import InputDialog
+from simugraph.ui.overlay import CheatsheetOverlay
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.camera import Camera
@@ -91,6 +92,10 @@ def main() -> None:
     active_dialog: InputDialog | None = None
     dialog_callback = None
     
+    # Cheatsheet overlay
+    cheatsheet = CheatsheetOverlay()
+    show_cheatsheet = False
+    
     # Double-click detection
     last_click_time = 0
     last_clicked_node_id: str | None = None
@@ -105,6 +110,12 @@ def main() -> None:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+                continue
+
+            # Dismiss cheatsheet on any key or click
+            if show_cheatsheet:
+                if event.type in (pygame.KEYDOWN, pygame.MOUSEBUTTONDOWN):
+                    show_cheatsheet = False
                 continue
 
             # Route events to active modal dialog if open
@@ -174,6 +185,10 @@ def main() -> None:
                 # Toggle directed edges: D
                 elif event.key == pygame.K_d:
                     directed_edges = not directed_edges
+
+                # Toggle cheatsheet: ? / /
+                elif event.key in (pygame.K_SLASH, pygame.K_QUESTION) or (event.key == pygame.K_SLASH and (event.mod & pygame.KMOD_SHIFT)):
+                    show_cheatsheet = True
 
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
@@ -405,6 +420,10 @@ def main() -> None:
         
         # Draw HUD status bar
         hud.draw(ui_surf, active_tool, snap_enabled, directed_edges, graph, camera, clock.get_fps())
+        
+        # Draw Cheatsheet Overlay
+        if show_cheatsheet:
+            cheatsheet.draw(ui_surf)
         
         # Draw Modal Dialogs
         if active_dialog is not None:
