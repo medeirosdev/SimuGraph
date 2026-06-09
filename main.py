@@ -118,6 +118,16 @@ def main() -> None:
                 elif event.key == pygame.K_0:
                     camera.reset_zoom()
 
+                # Zoom in: PageUp, Keypad Plus, Equals/Plus
+                elif event.key in (pygame.K_PAGEUP, pygame.K_KP_PLUS, pygame.K_EQUALS):
+                    mx, my = pygame.mouse.get_pos()
+                    camera.zoom_at(mx, my, cfg.ZOOM_FACTOR_KEY)
+
+                # Zoom out: PageDown, Keypad Minus, Minus
+                elif event.key in (pygame.K_PAGEDOWN, pygame.K_KP_MINUS, pygame.K_MINUS):
+                    mx, my = pygame.mouse.get_pos()
+                    camera.zoom_at(mx, my, 1.0 / cfg.ZOOM_FACTOR_KEY)
+
                 # Shortcuts to switch tools
                 elif event.key == pygame.K_n:
                     active_tool = "node"
