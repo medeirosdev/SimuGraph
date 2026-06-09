@@ -76,6 +76,8 @@ def main() -> None:
     snap_enabled = False
     directed_edges = False
     
+    is_panning = False
+    
     history = CommandHistory()
 
     running = True
@@ -210,6 +212,9 @@ def main() -> None:
                                 if to_remove:
                                     history.execute(RemoveEdgeCommand(to_remove), graph)
 
+                elif event.button == 2:  # Middle click starts panning
+                    is_panning = True
+
                 elif event.button == 3:  # Right click deletes nodes / edges in any tool
                     mx, my = event.pos
                     if my < cfg.WINDOW_H - cfg.HUD_H:
@@ -252,9 +257,13 @@ def main() -> None:
                             history.push(MoveNodeCommand(dragging_node.id, drag_start_pos, end_pos))
                     dragging_node = None
                     drag_start_pos = None
+                elif event.button == 2:  # Middle click release stops panning
+                    is_panning = False
 
             elif event.type == pygame.MOUSEMOTION:
-                if dragging_node:
+                if is_panning:
+                    camera.pan(event.rel[0], event.rel[1])
+                elif dragging_node:
                     mx, my = event.pos
                     wx, wy = camera.screen_to_world(mx, my)
                     if snap_enabled:
