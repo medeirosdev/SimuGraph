@@ -43,64 +43,122 @@ class Canvas:
         self._draw_nodes(camera, graph)
 
     def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
-        """Draw all edges in the graph and the connection preview line."""
+        """Draw all edges in the graph using straight or Bezier curves for parallel edges."""
         import math
-        # Draw existing edges
+        from collections import defaultdict
+
+        # Group edges by endpoints (unordered pair) to identify parallel/bidirectional connections
+        edge_groups = defaultdict(list)
         for edge in graph.edges():
-            u_node = graph.get_node(edge.u)
-            v_node = graph.get_node(edge.v)
+            key = tuple(sorted([edge.u, edge.v]))
+            edge_groups[key].append(edge)
+
+        # Draw existing edges
+        for (u_id, v_id), edges_list in edge_groups.items():
+            u_node = graph.get_node(u_id)
+            v_node = graph.get_node(v_id)
             if not u_node or not v_node:
                 continue
 
             su_x, sy_u = camera.world_to_screen(u_node.x, u_node.y)
             sv_x, sy_v = camera.world_to_screen(v_node.x, v_node.y)
 
-            # Determine color
-            color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
+            num_edges = len(edges_list)
+            for idx, edge in enumerate(edges_list):
+                # Calculate color
+                color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
 
-            # Simple straight line (curved parallel edges will be added in Phase 4)
-            pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
+                # Determine curve offset: if only 1 edge, straight line. Otherwise offset curves.
+                if num_edges == 1:
+                    # Straight line
+                    pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
+                    
+                    mid_x = (su_x + sv_x) / 2
+                    mid_y = (sy_u + sy_v) / 2
+                    
+                    # Arrowhead direction
+                    dx = sv_x - su_x
+                    dy = sy_v - sy_u
+                    angle = math.atan2(dy, dx)
+                    
+                    # Target node boundary for arrow
+                    target_node = v_node if edge.v == v_id else u_node
+                    target_x, target_y = (sv_x, sy_v) if edge.v == v_id else (su_x, sy_u)
+                else:
+                    # Quadratic Bezier: P(t) = (1-t)^2 * A + 2(1-t)t * C + t^2 * B
+                    # Control point C is offset from the midpoint of AB along normal vector
+                    mid_x = (su_x + sv_x) / 2
+                    mid_y = (sy_u + sy_v) / 2
+                    
+                    dx = sv_x - su_x
+                    dy = sy_v - sy_u
+                    length = (dx**2 + dy**2)**0.5
+                    
+                    if length > 0:
+                        nx = -dy / length
+                        ny = dx / length
+                    else:
+                        nx, ny = 0, 0
+                    
+                    # Curvature spacing (scale with camera zoom for consistent screen distance)
+                    spacing = 25.0 * max(0.5, min(2.0, camera.zoom))
+                    offset = (idx - (num_edges - 1) / 2) * spacing
+                    
+                    cx = mid_x + offset * nx
+                    cy = mid_y + offset * ny
+                    
+                    # Calculate curve points
+                    steps = 15
+                    points = []
+                    for s in range(steps + 1):
+                        t = s / steps
+                        px = (1 - t)**2 * su_x + 2 * (1 - t) * t * cx + t**2 * sv_x
+                        py = (1 - t)**2 * sy_u + 2 * (1 - t) * t * cy + t**2 * sy_v
+                        points.append((px, py))
+                    
+                    pygame.draw.lines(self.surface, color, False, points, 2)
+                    
+                    # Midpoint of the curve is P(0.5)
+                    mid_x = 0.25 * su_x + 0.5 * cx + 0.25 * sv_x
+                    mid_y = 0.25 * sy_u + 0.5 * cy + 0.25 * sy_v
+                    
+                    # Arrowhead direction (tangent at t=0.9)
+                    t_arrow = 0.9
+                    # Derivative of P(t) is 2(1-t)(C - A) + 2t(B - C)
+                    tx = 2 * (1 - t_arrow) * (cx - su_x) + 2 * t_arrow * (sv_x - cx)
+                    ty = 2 * (1 - t_arrow) * (cy - sy_u) + 2 * t_arrow * (sy_v - cy)
+                    angle = math.atan2(ty, tx)
+                    
+                    # Target node boundary for arrow
+                    target_node = v_node if edge.v == v_id else u_node
+                    target_x, target_y = (sv_x, sy_v) if edge.v == v_id else (su_x, sy_u)
 
-            # Draw edge weight
-            mid_x = (su_x + sv_x) / 2
-            mid_y = (sy_u + sy_v) / 2
-            weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
-            
-            if not hasattr(self, "font_weight"):
-                try:
-                    self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
-                except FileNotFoundError:
-                    self.font_weight = pygame.font.SysFont("monospace", 11)
+                # Draw edge weight
+                weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
+                if not hasattr(self, "font_weight"):
+                    try:
+                        self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
+                    except FileNotFoundError:
+                        self.font_weight = pygame.font.SysFont("monospace", 11)
 
-            text_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
-            tw, th = text_surf.get_size()
-            
-            # Rounded rect background for the weight
-            bg_rect = pygame.Rect(mid_x - tw/2 - 4, mid_y - th/2 - 2, tw + 8, th + 4)
-            
-            # Since surface has alpha, we can draw directly with transparency
-            pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
-            pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
-            self.surface.blit(text_surf, (mid_x - tw/2, mid_y - th/2))
+                text_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
+                tw, th = text_surf.get_size()
+                bg_rect = pygame.Rect(mid_x - tw/2 - 4, mid_y - th/2 - 2, tw + 8, th + 4)
+                pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
+                pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
+                self.surface.blit(text_surf, (mid_x - tw/2, mid_y - th/2))
 
-            # Draw arrowhead for directed edges
-            if edge.directed:
-                dx = sv_x - su_x
-                dy = sy_v - sy_u
-                dist = (dx**2 + dy**2)**0.5
-                if dist > 0:
-                    ux = dx / dist
-                    uy = dy / dist
-                    # Stop at the boundary of the target node
-                    target_radius = max(4.0, v_node.radius * camera.zoom)
-                    tx = sv_x - ux * target_radius
-                    ty = sy_v - uy * target_radius
+                # Draw arrowhead for directed edges
+                if edge.directed:
+                    # Intersect boundary of the target node
+                    target_radius = max(4.0, target_node.radius * camera.zoom)
+                    tx = target_x - math.cos(angle) * target_radius
+                    ty = target_y - math.sin(angle) * target_radius
 
                     # Calculate wing tips
-                    angle = math.atan2(dy, dx)
                     arrow_len = max(6.0, 10.0 * camera.zoom)
-                    arrow_len = min(15.0, arrow_len)  # clamp to nice size range
-                    arrow_angle = 0.4 # ~23 degrees
+                    arrow_len = min(15.0, arrow_len)
+                    arrow_angle = 0.4
                     
                     lx = tx - arrow_len * math.cos(angle - arrow_angle)
                     ly = ty - arrow_len * math.sin(angle - arrow_angle)
