@@ -100,6 +100,10 @@ def main() -> None:
     last_click_time = 0
     last_clicked_node_id: str | None = None
 
+    # Multi-node box selection
+    selection_box_start: tuple[int, int] | None = None
+    selection_box_current: tuple[int, int] | None = None
+
     running = True
     while running:
         dt = clock.tick(cfg.FPS)
@@ -309,9 +313,11 @@ def main() -> None:
                                     new_node = Node(x=wx, y=wy, label=get_next_node_label(graph))
                                     history.execute(AddNodeCommand(new_node), graph)
                             elif active_tool == "select":
-                                # Clear selection when clicking empty space
+                                # Clear selection when clicking empty space and start box selection
                                 for node in graph.nodes():
                                     node.selected = False
+                                selection_box_start = (mx, my)
+                                selection_box_current = (mx, my)
                             # Clicking empty space cancels edge start
                             elif active_tool == "edge":
                                 edge_start_node = None
@@ -368,6 +374,8 @@ def main() -> None:
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
+                    selection_box_start = None
+                    selection_box_current = None
                     if dragging_node and drag_start_pos:
                         # If node has moved, register the MoveNodeCommand in history
                         end_pos = (dragging_node.x, dragging_node.y)
@@ -379,10 +387,18 @@ def main() -> None:
                     is_panning = False
 
             elif event.type == pygame.MOUSEMOTION:
+                mx, my = event.pos
                 if is_panning:
                     camera.pan(event.rel[0], event.rel[1])
+                elif selection_box_start is not None:
+                    selection_box_current = (mx, my)
+                    wx_start, wy_start = camera.screen_to_world(*selection_box_start)
+                    wx_curr, wy_curr = camera.screen_to_world(*selection_box_current)
+                    x_min, x_max = sorted([wx_start, wx_curr])
+                    y_min, y_max = sorted([wy_start, wy_curr])
+                    for node in graph.nodes():
+                        node.selected = (x_min <= node.x <= x_max and y_min <= node.y <= y_max)
                 elif dragging_node:
-                    mx, my = event.pos
                     wx, wy = camera.screen_to_world(mx, my)
                     if snap_enabled:
                         dragging_node.x = round(wx / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
@@ -402,7 +418,11 @@ def main() -> None:
         # ----------------------------------------------------------------
         bg = cfg.THEME["bg"]
         screen.fill(bg)
-        canvas.draw(camera, graph, edge_start_node)
+        
+        sel_box = None
+        if selection_box_start and selection_box_current:
+            sel_box = (*selection_box_start, *selection_box_current)
+        canvas.draw(camera, graph, edge_start_node, sel_box)
         ui_surf.fill((0, 0, 0, 0))
         
         # Draw Sidebar

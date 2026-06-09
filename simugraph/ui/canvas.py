@@ -35,12 +35,28 @@ class Canvas:
     # Public API
     # ------------------------------------------------------------------
 
-    def draw(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
+    def draw(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None, selection_box: tuple[int, int, int, int] | None = None) -> None:
         """Clear the surface and redraw everything for one frame."""
         self.surface.fill((0, 0, 0, 0))
         self._draw_grid(camera)
         self._draw_edges(camera, graph, edge_start_node)
         self._draw_nodes(camera, graph)
+        if selection_box:
+            self._draw_selection_box(selection_box)
+
+    def _draw_selection_box(self, box: tuple[int, int, int, int]) -> None:
+        """Draws screen-space click-drag selection box overlay."""
+        x1, y1, x2, y2 = box
+        rx, ry = min(x1, x2), min(y1, y2)
+        rw, rh = abs(x2 - x1), abs(y2 - y1)
+        if rw > 0 and rh > 0:
+            box_rect = pygame.Rect(rx, ry, rw, rh)
+            # Create transparent surface for box fill
+            fill_surf = pygame.Surface((rw, rh), pygame.SRCALPHA)
+            fill_surf.fill(cfg.THEME["selection_box"])
+            self.surface.blit(fill_surf, (rx, ry))
+            # Border
+            pygame.draw.rect(self.surface, cfg.THEME["selection_border"], box_rect, width=1)
 
     def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
         """Draw all edges in the graph using straight or Bezier curves for parallel edges."""
