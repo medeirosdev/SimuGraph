@@ -9,6 +9,7 @@ import pygame
 import simugraph.settings as cfg
 from simugraph.ui.canvas import Canvas
 from simugraph.ui.sidebar import Sidebar
+from simugraph.ui.toolbar import Toolbar
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.camera import Camera
@@ -80,6 +81,7 @@ def main() -> None:
     is_panning = False
     
     sidebar = Sidebar()
+    toolbar = Toolbar()
     history = CommandHistory()
 
     running = True
@@ -155,7 +157,23 @@ def main() -> None:
             elif event.type == pygame.MOUSEBUTTONDOWN:
                 mx, my = event.pos
                 
-                # Check sidebar clicks first
+                # Check toolbar clicks first
+                menu_action = toolbar.handle_click(mx, my)
+                if menu_action:
+                    menu_id, action_id = menu_action
+                    if menu_id == "file":
+                        if action_id == "exit":
+                            running = False
+                        elif action_id == "clear":
+                            graph = Graph()
+                            history.clear()
+                            edge_start_node = None
+                    continue
+                # If a dropdown is active, clicks outside should close it and consume the event
+                if toolbar.active_menu_id:
+                    continue
+
+                # Check sidebar clicks second
                 clicked_tool = sidebar.handle_click(mx, my)
                 if clicked_tool:
                     active_tool = clicked_tool
@@ -310,6 +328,9 @@ def main() -> None:
         
         # Draw Sidebar
         sidebar.draw(ui_surf, active_tool)
+        
+        # Draw Toolbar
+        toolbar.draw(ui_surf)
 
         # ----------------------------------------------------------------
         # HUD — bottom status bar
