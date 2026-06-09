@@ -20,7 +20,8 @@ from simugraph.camera import Camera
 from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
-    RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand
+    RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand,
+    ColorComponentsCommand
 )
 
 
@@ -214,6 +215,16 @@ def main() -> None:
                             graph = Graph()
                             history.clear()
                             edge_start_node = None
+                    elif menu_id == "algo":
+                        if action_id == "scc":
+                            from simugraph.algorithms.scc import find_sccs
+                            sccs = find_sccs(graph)
+                            color_map = {}
+                            for comp_idx, comp in enumerate(sccs):
+                                color = cfg.SCC_PALETTE[comp_idx % len(cfg.SCC_PALETTE)]
+                                for nid in comp:
+                                    color_map[nid] = color
+                            history.execute(ColorComponentsCommand(color_map), graph)
                     continue
                 # If a dropdown is active, clicks outside should close it and consume the event
                 if toolbar.active_menu_id:

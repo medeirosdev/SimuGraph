@@ -141,6 +141,25 @@ class ToggleNodePinCommand(Command):
             node.pinned = self.old_pinned
 
 
+class ColorComponentsCommand(Command):
+    def __init__(self, color_map: dict[str, tuple[int, int, int]]) -> None:
+        self.color_map = color_map
+        self.old_colors: dict[str, tuple[int, int, int]] = {}
+
+    def execute(self, graph: Graph) -> None:
+        for node_id, new_color in self.color_map.items():
+            node = graph.get_node(node_id)
+            if node:
+                self.old_colors[node_id] = node.color
+                node.color = new_color
+
+    def undo(self, graph: Graph) -> None:
+        for node_id, old_color in self.old_colors.items():
+            node = graph.get_node(node_id)
+            if node:
+                node.color = old_color
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 

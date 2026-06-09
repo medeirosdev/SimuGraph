@@ -39,6 +39,7 @@ class Toolbar:
                     ("bfs", "Breadth-First Search (BFS)"),
                     ("dfs", "Depth-First Search (DFS)"),
                     ("dijkstra", "Dijkstra's Algorithm"),
+                    ("scc", "SCC Color Coding"),
                 ]
             },
             {
