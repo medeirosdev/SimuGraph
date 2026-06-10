@@ -8,6 +8,7 @@ the Camera instance so the grid scrolls and scales correctly.
 
 from __future__ import annotations
 import pygame
+import math
 import simugraph.settings as cfg
 from simugraph.camera import Camera
 from simugraph.core.graph import Graph
@@ -341,6 +342,23 @@ class Canvas:
             else:
                 fill_color = node.color
                 stroke_color = cfg.THEME["node_stroke"]
+
+            # If selected, draw animated selection glow behind the node
+            if node.selected:
+                t_msec = pygame.time.get_ticks()
+                pulse = (math.sin(t_msec / 180.0) + 1.0) / 2.0  # 0.0 to 1.0
+                base_color = cfg.THEME["node_selected"]
+                for i in range(4):
+                    radius_offset = 2 + i * 3 + pulse * 4
+                    alpha = int((4 - i) * 30 * (1.0 - pulse * 0.25))
+                    alpha = max(0, min(255, alpha))
+                    pygame.draw.circle(
+                        self.surface,
+                        (*base_color[:3], alpha),
+                        (sx, sy),
+                        int(s_radius + radius_offset),
+                        width=1
+                    )
 
             # Draw filled circle & smooth outer outline
             pygame.gfxdraw.filled_circle(self.surface, sx, sy, s_radius, fill_color)
