@@ -14,8 +14,10 @@ from simugraph.ui.inspector import Inspector
 from simugraph.ui.hud import HUD
 from simugraph.ui.dialog import InputDialog
 from simugraph.ui.overlay import CheatsheetOverlay
+from simugraph.ui.context_menu import ContextMenu
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
+from simugraph.core.edge import Edge
 from simugraph.camera import Camera
 from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
@@ -97,6 +99,25 @@ def main() -> None:
     # Cheatsheet overlay
     cheatsheet = CheatsheetOverlay()
     show_cheatsheet = False
+
+    # Context Menu
+    context_menu = ContextMenu()
+    algo_source_node_id: str | None = None
+
+    def set_active_dialog(dialog, callback):
+        nonlocal active_dialog, dialog_callback
+        active_dialog = dialog
+        dialog_callback = callback
+
+    def clear_graph():
+        nonlocal graph, edge_start_node
+        graph = Graph()
+        history.clear()
+        edge_start_node = None
+
+    def set_source_node(node_id):
+        nonlocal algo_source_node_id
+        algo_source_node_id = node_id
     
     # Double-click detection
     last_click_time = 0
@@ -165,6 +186,13 @@ def main() -> None:
                     active_dialog = None
                     dialog_callback = None
                 continue
+
+            # Route events to context menu if open
+            if context_menu.visible:
+                mx, my = pygame.mouse.get_pos()
+                consumed = context_menu.handle_event(event, mx, my)
+                if consumed or (event.type == pygame.MOUSEBUTTONDOWN and not consumed):
+                    continue
 
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -283,8 +311,6 @@ def main() -> None:
                             node.selected = False
                             
                         import uuid
-                        from simugraph.core.node import Node
-                        from simugraph.core.edge import Edge
                         
                         paste_count += 1
                         offset = 30 * paste_count
@@ -464,7 +490,6 @@ def main() -> None:
                                                 weight_val = float(val_str)
                                             except ValueError:
                                                 weight_val = 1.0
-                                            from simugraph.core.edge import Edge
                                             new_edge = Edge(u=u_node.id, v=v_node.id, weight=weight_val, directed=dir_flag)
                                             history.execute(AddEdgeCommand(new_edge), graph)
                                         return cb
@@ -529,7 +554,7 @@ def main() -> None:
                     if cfg.SIDEBAR_W < mx < cfg.WINDOW_W - cfg.INSPECTOR_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         is_panning = True
 
-                elif event.button == 3:  # Right click deletes nodes / edges in any tool
+                elif event.button == 3:  # Right click opens context menu
                     if cfg.SIDEBAR_W < mx < cfg.WINDOW_W - cfg.INSPECTOR_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
                         wx, wy = camera.screen_to_world(mx, my)
                         
@@ -540,36 +565,94 @@ def main() -> None:
                             if dist <= node.radius:
                                 clicked_node = node
                                 break
-                        
+                                
                         if clicked_node:
-                            if clicked_node.selected:
-                                selected_nodes = [n for n in graph.nodes() if n.selected]
-                                incident_edges = set()
-                                for node in selected_nodes:
-                                    for edge in graph.edges_of(node.id):
-                                        incident_edges.add(edge)
-                                history.execute(RemoveNodesCommand(selected_nodes, list(incident_edges)), graph)
-                                if edge_start_node in selected_nodes:
-                                    edge_start_node = None
-                            else:
-                                incident_edges = graph.edges_of(clicked_node.id)
-                                history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
-                                if edge_start_node == clicked_node:
-                                    edge_start_node = None
+                            n_ref = clicked_node
+                            options = [
+                                {
+                                    "label": "Rename",
+                                    "action": lambda n=n_ref: set_active_dialog(
+                                        InputDialog("Rename Node", initial_value=n.label, placeholder="New Label"),
+                                        lambda val, target_node=n: history.execute(RenameNodeCommand(target_node.id, target_node.label, val), graph)
+                                    )
+                                },
+                                {
+                                    "label": "Change Color",
+                                    "action": lambda n=n_ref: history.execute(
+                                        ChangeNodeColorCommand(
+                                            n.id,
+                                            n.color,
+                                            [(60, 130, 220), (80, 220, 120), (255, 160, 60), (255, 80, 160), (180, 100, 255)][
+                                                ([(60, 130, 220), (80, 220, 120), (255, 160, 60), (255, 80, 160), (180, 100, 255)].index(n.color) + 1) % 5
+                                                if n.color in [(60, 130, 220), (80, 220, 120), (255, 160, 60), (255, 80, 160), (180, 100, 255)] else 0
+                                            ]
+                                        ),
+                                        graph
+                                    )
+                                },
+                                {
+                                    "label": "Unpin" if n_ref.pinned else "Pin",
+                                    "action": lambda n=n_ref: history.execute(ToggleNodePinCommand(n.id, n.pinned, not n.pinned), graph)
+                                },
+                                {
+                                    "label": "Delete",
+                                    "action": lambda n=n_ref: (
+                                        history.execute(RemoveNodesCommand([n], list(graph.edges_of(n.id))), graph)
+                                        if n.selected else
+                                        history.execute(RemoveNodeCommand(n, list(graph.edges_of(n.id))), graph)
+                                    )
+                                },
+                                {
+                                    "label": "Set as Source",
+                                    "action": lambda n=n_ref: set_source_node(n.id)
+                                }
+                            ]
+                            context_menu.show(mx, my, n_ref, options)
                         else:
-                            # Try to find clicked edge
+                            # Check if clicked on an edge
                             threshold = 8.0 / camera.zoom
-                            to_remove = None
+                            clicked_edge = None
                             for edge in graph.edges():
                                 u = graph.get_node(edge.u)
                                 v = graph.get_node(edge.v)
                                 if u and v:
                                     d = distance_to_segment(wx, wy, u.x, u.y, v.x, v.y)
                                     if d <= threshold:
-                                        to_remove = edge
+                                        clicked_edge = edge
                                         break
-                            if to_remove:
-                                history.execute(RemoveEdgeCommand(to_remove), graph)
+                                        
+                            if clicked_edge:
+                                e_ref = clicked_edge
+                                options = [
+                                    {
+                                        "label": "Edit Weight",
+                                        "action": lambda e=e_ref: set_active_dialog(
+                                            InputDialog("Edge Weight", initial_value=str(e.weight), placeholder="Weight (number)"),
+                                            lambda val_str, target_edge=e: history.execute(
+                                                ChangeEdgeWeightCommand(target_edge.id, target_edge.weight, float(val_str) if val_str else 1.0),
+                                                graph
+                                            )
+                                        )
+                                    },
+                                    {
+                                        "label": "Delete",
+                                        "action": lambda e=e_ref: history.execute(RemoveEdgeCommand(e), graph)
+                                    }
+                                ]
+                                context_menu.show(mx, my, e_ref, options)
+                            else:
+                                # Clicked on canvas background
+                                options = [
+                                    {
+                                        "label": "Add Node",
+                                        "action": lambda x=wx, y=wy: history.execute(AddNodeCommand(Node(x=x, y=y, label=get_next_node_label(graph))), graph)
+                                    },
+                                    {
+                                        "label": "Clear Graph",
+                                        "action": clear_graph
+                                    }
+                                ]
+                                context_menu.show(mx, my, None, options)
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
@@ -700,6 +783,10 @@ def main() -> None:
         # Draw Modal Dialogs
         if active_dialog is not None:
             active_dialog.draw(ui_surf)
+
+        # Draw Context Menu
+        if context_menu.visible:
+            context_menu.draw(ui_surf)
 
         # Draw node hover tooltip (with 300ms delay)
         if hovered_node_id and pygame.time.get_ticks() - hover_start_ticks >= 300:
