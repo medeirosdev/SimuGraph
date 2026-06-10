@@ -79,6 +79,80 @@ class Canvas:
             su_x, sy_u = camera.world_to_screen(u_node.x, u_node.y)
             sv_x, sy_v = camera.world_to_screen(v_node.x, v_node.y)
 
+            # --- Handle self-loops ---
+            if u_id == v_id:
+                num_edges = len(edges_list)
+                for idx, edge in enumerate(edges_list):
+                    # Calculate color
+                    color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
+                    
+                    theta = -math.pi / 4  # Top-right angle
+                    r = u_node.radius * camera.zoom
+                    
+                    # Vary loop size for nested parallel self-loops
+                    loop_r = r * (0.8 + idx * 0.5)
+                    loop_offset = r + loop_r - 2
+                    
+                    lc_x = su_x + loop_offset * math.cos(theta)
+                    lc_y = sy_u + loop_offset * math.sin(theta)
+                    
+                    # Draw circular loop arc (pygame.draw.circle is clipped by node fill)
+                    pygame.draw.circle(self.surface, color, (int(lc_x), int(lc_y)), int(loop_r), width=2)
+                    
+                    # Arrowhead for directed self-loops
+                    if edge.directed:
+                        arrow_angle = theta - 0.4
+                        ax = su_x + r * math.cos(arrow_angle)
+                        ay = sy_u + r * math.sin(arrow_angle)
+                        
+                        tangent_angle = math.atan2(ay - lc_y, ax - lc_x) + math.pi / 2
+                        
+                        arrow_len = max(6.0, 10.0 * camera.zoom)
+                        arrow_len = min(15.0, arrow_len)
+                        wing_angle = 0.4
+                        
+                        lx = ax - arrow_len * math.cos(tangent_angle - wing_angle)
+                        ly = ay - arrow_len * math.sin(tangent_angle - wing_angle)
+                        rx = ax - arrow_len * math.cos(tangent_angle + wing_angle)
+                        ry = ay - arrow_len * math.sin(tangent_angle + wing_angle)
+                        
+                        pygame.draw.polygon(self.surface, color, [(ax, ay), (lx, ly), (rx, ry)])
+
+                    # Flow particles along self-loop (LOD)
+                    if camera.zoom >= 0.4:
+                        t_offset = (pygame.time.get_ticks() / 1800.0) % 1.0
+                        particle_color = cfg.THEME["accent"]
+                        for p_idx in range(3):
+                            t_val = (t_offset + p_idx / 3.0) % 1.0
+                            p_angle = (theta + math.pi) + t_val * 2 * math.pi
+                            px = lc_x + loop_r * math.cos(p_angle)
+                            py = lc_y + loop_r * math.sin(p_angle)
+                            
+                            dist_node = ((px - su_x)**2 + (py - sy_u)**2)**0.5
+                            if dist_node > r:
+                                pygame.draw.circle(self.surface, particle_color, (int(px), int(py)), 3)
+
+                    # Draw weight label at loop apex (LOD)
+                    if camera.zoom >= 0.5:
+                        weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
+                        if not hasattr(self, "font_weight"):
+                            try:
+                                self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
+                            except FileNotFoundError:
+                                self.font_weight = pygame.font.SysFont("monospace", 11)
+
+                        text_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
+                        tw, th = text_surf.get_size()
+                        
+                        wx_pos = lc_x + loop_r * math.cos(theta)
+                        wy_pos = lc_y + loop_r * math.sin(theta)
+                        
+                        bg_rect = pygame.Rect(wx_pos - tw/2 - 4, wy_pos - th/2 - 2, tw + 8, th + 4)
+                        pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
+                        pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
+                        self.surface.blit(text_surf, (wx_pos - tw/2, wy_pos - th/2))
+                continue
+
             num_edges = len(edges_list)
             for idx, edge in enumerate(edges_list):
                 # Calculate color
