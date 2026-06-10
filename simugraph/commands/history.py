@@ -213,6 +213,23 @@ class MoveNodesCommand(Command):
                 node.x, node.y = old_pos
 
 
+class RemoveNodesCommand(Command):
+    """Command to remove a group of nodes and their incident edges simultaneously."""
+    def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
+        self.nodes = nodes
+        self.edges = edges
+
+    def execute(self, graph: Graph) -> None:
+        for node in self.nodes:
+            graph.remove_node(node.id)
+
+    def undo(self, graph: Graph) -> None:
+        for node in self.nodes:
+            graph.add_node(node)
+        for edge in self.edges:
+            graph.add_edge(edge)
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 

@@ -22,7 +22,7 @@ from simugraph.commands.history import (
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
     RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand,
     ColorComponentsCommand, ChangeNodeWeightCommand, ChangeEdgeWeightCommand,
-    MoveNodesCommand
+    MoveNodesCommand, RemoveNodesCommand
 )
 
 
@@ -227,6 +227,18 @@ def main() -> None:
                             layout_steps_remaining = 75
                             layout_temperature = 25.0
 
+                # Delete selected nodes: Delete / Backspace
+                elif event.key in (pygame.K_DELETE, pygame.K_BACKSPACE):
+                    selected_nodes = [n for n in graph.nodes() if n.selected]
+                    if selected_nodes:
+                        incident_edges = set()
+                        for node in selected_nodes:
+                            for edge in graph.edges_of(node.id):
+                                incident_edges.add(edge)
+                        history.execute(RemoveNodesCommand(selected_nodes, list(incident_edges)), graph)
+                        dragging_node = None
+                        edge_start_node = None
+
                 # Toggle cheatsheet: ? / /
                 elif event.key in (pygame.K_SLASH, pygame.K_QUESTION) or (event.key == pygame.K_SLASH and (event.mod & pygame.KMOD_SHIFT)):
                     show_cheatsheet = True
@@ -366,9 +378,16 @@ def main() -> None:
                                     dialog_callback = make_edge_cb(edge_start_node, clicked_node, directed_edges)
                                     edge_start_node = None
                             elif active_tool == "remove":
-                                # Remove node and its incident edges (stored for undo)
-                                incident_edges = graph.edges_of(clicked_node.id)
-                                history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
+                                if clicked_node.selected:
+                                    selected_nodes = [n for n in graph.nodes() if n.selected]
+                                    incident_edges = set()
+                                    for node in selected_nodes:
+                                        for edge in graph.edges_of(node.id):
+                                            incident_edges.add(edge)
+                                    history.execute(RemoveNodesCommand(selected_nodes, list(incident_edges)), graph)
+                                else:
+                                    incident_edges = graph.edges_of(clicked_node.id)
+                                    history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
                             else:
                                 if clicked_node.selected:
                                     dragging_group = {node.id: (node.x, node.y) for node in graph.nodes() if node.selected}
@@ -429,10 +448,20 @@ def main() -> None:
                                 break
                         
                         if clicked_node:
-                            incident_edges = graph.edges_of(clicked_node.id)
-                            history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
-                            if edge_start_node == clicked_node:
-                                edge_start_node = None
+                            if clicked_node.selected:
+                                selected_nodes = [n for n in graph.nodes() if n.selected]
+                                incident_edges = set()
+                                for node in selected_nodes:
+                                    for edge in graph.edges_of(node.id):
+                                        incident_edges.add(edge)
+                                history.execute(RemoveNodesCommand(selected_nodes, list(incident_edges)), graph)
+                                if edge_start_node in selected_nodes:
+                                    edge_start_node = None
+                            else:
+                                incident_edges = graph.edges_of(clicked_node.id)
+                                history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
+                                if edge_start_node == clicked_node:
+                                    edge_start_node = None
                         else:
                             # Try to find clicked edge
                             threshold = 8.0 / camera.zoom
