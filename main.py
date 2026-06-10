@@ -19,6 +19,8 @@ from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.core.edge import Edge
 from simugraph.camera import Camera
+from simugraph.algorithms.base import AlgoRunner
+from simugraph.algorithms import BFS, DFS, Dijkstra, BellmanFord, Kruskal, Prim, TopologicalSort
 from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
@@ -103,6 +105,26 @@ def main() -> None:
     # Context Menu
     context_menu = ContextMenu()
     algo_source_node_id: str | None = None
+    algo_runner = AlgoRunner()
+
+    # Monkey patch history to stop algorithm runner on any mutation command
+    original_execute = history.execute
+    def patched_execute(cmd, g):
+        algo_runner.stop()
+        original_execute(cmd, g)
+    history.execute = patched_execute
+
+    original_undo = history.undo
+    def patched_undo(g):
+        algo_runner.stop()
+        original_undo(g)
+    history.undo = patched_undo
+
+    original_redo = history.redo
+    def patched_redo(g):
+        algo_runner.stop()
+        original_redo(g)
+    history.redo = patched_redo
 
     def set_active_dialog(dialog, callback):
         nonlocal active_dialog, dialog_callback
@@ -110,7 +132,9 @@ def main() -> None:
         dialog_callback = callback
 
     def clear_graph():
-        nonlocal graph, edge_start_node
+        nonlocal graph, edge_start_node, algo_source_node_id
+        algo_runner.stop()
+        algo_source_node_id = None
         graph = Graph()
         history.clear()
         edge_start_node = None
@@ -118,6 +142,8 @@ def main() -> None:
     def set_source_node(node_id):
         nonlocal algo_source_node_id
         algo_source_node_id = node_id
+        if algo_runner.algorithm:
+            algo_runner.start(algo_runner.algorithm, graph, node_id)
     
     # Double-click detection
     last_click_time = 0
@@ -195,6 +221,28 @@ def main() -> None:
                     continue
 
             if event.type == pygame.KEYDOWN:
+                if algo_runner.algorithm:
+                    if event.key == pygame.K_SPACE:
+                        algo_runner.playing = not algo_runner.playing
+                        continue
+                    elif event.key == pygame.K_RIGHT:
+                        algo_runner.playing = False
+                        algo_runner.step_forward()
+                        continue
+                    elif event.key == pygame.K_LEFT:
+                        algo_runner.playing = False
+                        algo_runner.step_backward()
+                        continue
+                    elif event.key == pygame.K_UP:
+                        algo_runner.speed_fps = min(10.0, algo_runner.speed_fps + 0.5)
+                        continue
+                    elif event.key == pygame.K_DOWN:
+                        algo_runner.speed_fps = max(0.1, algo_runner.speed_fps - 0.5)
+                        continue
+                    elif event.key == pygame.K_ESCAPE:
+                        algo_runner.stop()
+                        continue
+
                 if event.key == pygame.K_ESCAPE:
                     # Cancel edge creation first, otherwise exit
                     if edge_start_node:
@@ -384,7 +432,48 @@ def main() -> None:
                             history.clear()
                             edge_start_node = None
                     elif menu_id == "algo":
-                        if action_id == "scc":
+                        def run_algo(algo_class):
+                            nonlocal algo_source_node_id, articulation_points, bridges
+                            articulation_points.clear()
+                            bridges.clear()
+                            
+                            algo_instance = algo_class()
+                            if algo_instance.requires_source:
+                                source_id = algo_source_node_id
+                                if not source_id:
+                                    selected_nodes = [n for n in graph.nodes() if n.selected]
+                                    if selected_nodes:
+                                        source_id = selected_nodes[0].id
+                                        algo_source_node_id = source_id
+                                if not source_id:
+                                    all_nodes = list(graph.nodes())
+                                    if all_nodes:
+                                        all_nodes.sort(key=lambda n: n.label)
+                                        source_id = all_nodes[0].id
+                                        algo_source_node_id = source_id
+                                    else:
+                                        return
+                            else:
+                                source_id = None
+                            
+                            algo_runner.start(algo_instance, graph, source_id)
+
+                        if action_id == "bfs":
+                            run_algo(BFS)
+                        elif action_id == "dfs":
+                            run_algo(DFS)
+                        elif action_id == "dijkstra":
+                            run_algo(Dijkstra)
+                        elif action_id == "bellman":
+                            run_algo(BellmanFord)
+                        elif action_id == "kruskal":
+                            run_algo(Kruskal)
+                        elif action_id == "prim":
+                            run_algo(Prim)
+                        elif action_id == "toposort":
+                            run_algo(TopologicalSort)
+                        elif action_id == "scc":
+                            algo_runner.stop()
                             from simugraph.algorithms.scc import find_sccs
                             sccs = find_sccs(graph)
                             color_map = {}
@@ -394,6 +483,7 @@ def main() -> None:
                                     color_map[nid] = color
                             history.execute(ColorComponentsCommand(color_map), graph)
                         elif action_id == "bridges":
+                            algo_runner.stop()
                             from simugraph.algorithms.connectivity import find_bridges_and_articulation_points
                             ap_ids, br_ids = find_bridges_and_articulation_points(graph)
                             articulation_points.clear()
@@ -456,10 +546,15 @@ def main() -> None:
                     continue
 
                 # Check inspector clicks second
-                ins_action = inspector.handle_click(mx, my, sel_node, sel_edge)
+                ins_action = inspector.handle_click(mx, my, sel_node, sel_edge, algo_runner)
                 if ins_action:
                     action_type, val = ins_action
-                    if action_type == "pin" and sel_node:
+                    if action_type == "export_results":
+                        active_dialog = InputDialog("Export Results", initial_value="results.txt", placeholder="filename.txt")
+                        def make_export_cb():
+                            return lambda val_str: algo_runner.export_results(val_str if val_str else "results.txt")
+                        dialog_callback = make_export_cb()
+                    elif action_type == "pin" and sel_node:
                         history.execute(ToggleNodePinCommand(sel_node.id, sel_node.pinned, val), graph)
                     elif action_type == "color" and sel_node:
                         history.execute(ChangeNodeColorCommand(sel_node.id, sel_node.color, val), graph)
@@ -798,6 +893,9 @@ def main() -> None:
             hovered_node_id = None
             hover_start_ticks = 0
 
+        # --- Update algorithm runner ---
+        algo_runner.update()
+
         # ----------------------------------------------------------------
         # Clear layers
         # ----------------------------------------------------------------
@@ -807,7 +905,7 @@ def main() -> None:
         sel_box = None
         if selection_box_start and selection_box_current:
             sel_box = (*selection_box_start, *selection_box_current)
-        canvas.draw(camera, graph, edge_start_node, sel_box, articulation_points, bridges)
+        canvas.draw(camera, graph, edge_start_node, sel_box, articulation_points, bridges, algo_runner.current_state, algo_source_node_id)
         ui_surf.fill((0, 0, 0, 0))
         
         # Draw Sidebar
@@ -821,8 +919,45 @@ def main() -> None:
         selected_edges = [e for e in graph.edges() if e.selected]
         sel_node = selected_nodes[0] if selected_nodes else None
         sel_edge = selected_edges[0] if selected_edges else None
-        inspector.draw(ui_surf, sel_node, sel_edge)
+        inspector.draw(ui_surf, sel_node, sel_edge, algo_runner)
         
+        # Draw floating algorithm status banner if active
+        if algo_runner.algorithm:
+            canvas_w = cfg.WINDOW_W - cfg.INSPECTOR_W - cfg.SIDEBAR_W
+            banner_w = min(600, canvas_w - 40)
+            banner_h = 50
+            bx = cfg.SIDEBAR_W + (canvas_w - banner_w) // 2
+            by = cfg.TOOLBAR_H + 20
+            
+            # Semi-transparent background
+            banner_rect = pygame.Rect(bx, by, banner_w, banner_h)
+            banner_surf = pygame.Surface((banner_w, banner_h), pygame.SRCALPHA)
+            banner_surf.fill((20, 20, 25, 220)) # Dark transparent
+            pygame.draw.rect(banner_surf, cfg.THEME["panel_border"], (0, 0, banner_w, banner_h), width=1, border_radius=8)
+            ui_surf.blit(banner_surf, (bx, by))
+            
+            # Message and Step index
+            curr_state = algo_runner.current_state
+            msg_str = curr_state.message if curr_state else ""
+            if len(msg_str) > 75:
+                msg_str = msg_str[:72] + "..."
+                
+            if not hasattr(hud, "font_algo_banner"):
+                try:
+                    hud.font_algo_banner = pygame.font.Font(cfg.FONT_MONO_PATH, 12)
+                except FileNotFoundError:
+                    hud.font_algo_banner = pygame.font.SysFont("monospace", 12)
+            
+            msg_surf = hud.font_algo_banner.render(msg_str, True, cfg.THEME["text"])
+            mw_w, mw_h = msg_surf.get_size()
+            ui_surf.blit(msg_surf, (bx + 15, by + (banner_h - mw_h) // 2))
+            
+            if curr_state:
+                step_str = f"Step {curr_state.step_index}/{curr_state.total_steps}"
+                step_surf = hud.font_algo_banner.render(step_str, True, cfg.THEME["accent"])
+                sw_w, sw_h = step_surf.get_size()
+                ui_surf.blit(step_surf, (bx + banner_w - sw_w - 15, by + (banner_h - sw_h) // 2))
+
         # Draw HUD status bar
         hud.draw(ui_surf, active_tool, snap_enabled, directed_edges, graph, camera, clock.get_fps())
         

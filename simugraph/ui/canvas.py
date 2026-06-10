@@ -12,6 +12,10 @@ import math
 import simugraph.settings as cfg
 from simugraph.camera import Camera
 from simugraph.core.graph import Graph
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from simugraph.algorithms.base import AlgoState
+    from simugraph.core.node import Node
 
 # World-space spacing between minor grid lines
 GRID_MINOR: int = 50
@@ -43,13 +47,15 @@ class Canvas:
         edge_start_node: Node | None = None,
         selection_box: tuple[int, int, int, int] | None = None,
         articulation_points: set[str] | None = None,
-        bridges: set[str] | None = None
+        bridges: set[str] | None = None,
+        algo_state: AlgoState | None = None,
+        source_node_id: str | None = None
     ) -> None:
         """Clear the surface and redraw everything for one frame."""
         self.surface.fill((0, 0, 0, 0))
         self._draw_grid(camera)
-        self._draw_edges(camera, graph, edge_start_node, bridges=bridges)
-        self._draw_nodes(camera, graph, articulation_points=articulation_points)
+        self._draw_edges(camera, graph, edge_start_node, bridges=bridges, algo_state=algo_state)
+        self._draw_nodes(camera, graph, articulation_points=articulation_points, algo_state=algo_state, source_node_id=source_node_id)
         if selection_box:
             self._draw_selection_box(selection_box)
 
@@ -67,7 +73,14 @@ class Canvas:
             # Border
             pygame.draw.rect(self.surface, cfg.THEME["selection_border"], box_rect, width=1)
 
-    def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None, bridges: set[str] | None = None) -> None:
+    def _draw_edges(
+        self,
+        camera: Camera,
+        graph: Graph,
+        edge_start_node: Node | None = None,
+        bridges: set[str] | None = None,
+        algo_state: AlgoState | None = None
+    ) -> None:
         """Draw all edges in the graph using straight or Bezier curves for parallel edges."""
         import math
         from collections import defaultdict
@@ -92,8 +105,14 @@ class Canvas:
             if u_id == v_id:
                 num_edges = len(edges_list)
                 for idx, edge in enumerate(edges_list):
-                    # Calculate color
-                    color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
+                    # Calculate color and width
+                    is_algo_highlighted = algo_state and edge.id in algo_state.highlighted_edges
+                    if is_algo_highlighted:
+                        color = (255, 80, 160)
+                        edge_w = 4
+                    else:
+                        color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
+                        edge_w = 2
                     
                     theta = -math.pi / 4  # Top-right angle
                     r = u_node.radius * camera.zoom
@@ -108,7 +127,7 @@ class Canvas:
                     # Draw circular loop arc (pygame.draw.circle is clipped by node fill)
                     if bridges and edge.id in bridges:
                         pygame.draw.circle(self.surface, (255, 107, 107), (int(lc_x), int(lc_y)), int(loop_r), width=5)
-                    pygame.draw.circle(self.surface, color, (int(lc_x), int(lc_y)), int(loop_r), width=2)
+                    pygame.draw.circle(self.surface, color, (int(lc_x), int(lc_y)), int(loop_r), width=edge_w)
                     
                     # Arrowhead for directed self-loops
                     if edge.directed:
@@ -166,15 +185,21 @@ class Canvas:
 
             num_edges = len(edges_list)
             for idx, edge in enumerate(edges_list):
-                # Calculate color
-                color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
+                # Calculate color and width
+                is_algo_highlighted = algo_state and edge.id in algo_state.highlighted_edges
+                if is_algo_highlighted:
+                    color = (255, 80, 160)
+                    edge_w = 4
+                else:
+                    color = cfg.THEME["edge_directed"] if (edge.directed and not edge.selected) else (cfg.THEME["edge_selected"] if edge.selected else edge.color)
+                    edge_w = 2
 
                 # Determine curve offset: if only 1 edge, straight line. Otherwise offset curves.
                 if num_edges == 1:
                     # Straight line
                     if bridges and edge.id in bridges:
                         pygame.draw.line(self.surface, (255, 107, 107), (su_x, sy_u), (sv_x, sy_v), 5)
-                    pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
+                    pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), edge_w)
                     
                     mid_x = (su_x + sv_x) / 2
                     mid_y = (sy_u + sy_v) / 2
@@ -221,7 +246,7 @@ class Canvas:
                     
                     if bridges and edge.id in bridges:
                         pygame.draw.lines(self.surface, (255, 107, 107), False, points, 5)
-                    pygame.draw.lines(self.surface, color, False, points, 2)
+                    pygame.draw.lines(self.surface, color, False, points, edge_w)
                     
                     # Midpoint of the curve is P(0.5)
                     mid_x = 0.25 * su_x + 0.5 * cx + 0.25 * sv_x
@@ -304,7 +329,14 @@ class Canvas:
             mx, my = pygame.mouse.get_pos()
             pygame.draw.line(self.surface, (*cfg.THEME["accent"][:3], 150), (su_x, sy_u), (mx, my), 2)
 
-    def _draw_nodes(self, camera: Camera, graph: Graph, articulation_points: set[str] | None = None) -> None:
+    def _draw_nodes(
+        self,
+        camera: Camera,
+        graph: Graph,
+        articulation_points: set[str] | None = None,
+        algo_state: AlgoState | None = None,
+        source_node_id: str | None = None
+    ) -> None:
         """Draw all nodes in the graph using anti-aliased primitives."""
         import pygame.gfxdraw
         if not hasattr(self, "font_node"):
@@ -330,7 +362,13 @@ class Canvas:
             dist_to_mouse = ((node.x - m_wx)**2 + (node.y - m_wy)**2)**0.5
             is_hovered = dist_to_mouse <= node.radius
 
-            if node.selected:
+            if algo_state and node.id in algo_state.visited:
+                fill_color = (80, 220, 120)
+                stroke_color = cfg.THEME["node_stroke"]
+            elif algo_state and node.id in algo_state.frontier:
+                fill_color = (255, 160, 60)
+                stroke_color = cfg.THEME["node_stroke"]
+            elif node.selected:
                 fill_color = cfg.THEME["node_selected"]
                 stroke_color = cfg.THEME["node_selected"]
             elif is_hovered:
@@ -342,6 +380,9 @@ class Canvas:
             else:
                 fill_color = node.color
                 stroke_color = cfg.THEME["node_stroke"]
+
+            if node.id == source_node_id:
+                stroke_color = (80, 180, 255)
 
             # If selected, draw animated selection glow behind the node
             if node.selected:
@@ -378,25 +419,34 @@ class Canvas:
                 text_rect = text_surf.get_rect(center=(sx, sy))
                 self.surface.blit(text_surf, text_rect)
 
-            # Render node weight/cost if non-zero (Level of Detail: omit if zoomed out)
-            if node.weight != 0.0 and camera.zoom >= 0.45:
-                weight_str = f"{node.weight:.1f}" if node.weight % 1 != 0 else f"{int(node.weight)}"
-                if not hasattr(self, "font_weight"):
-                    try:
-                        self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
-                    except FileNotFoundError:
-                        self.font_weight = pygame.font.SysFont("monospace", 11)
-                
-                # Small badge above the node
-                w_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
-                ww, wh = w_surf.get_size()
-                wx_pos = sx
-                wy_pos = sy - s_radius - wh/2 - 6
-                
-                bg_rect = pygame.Rect(wx_pos - ww/2 - 4, wy_pos - wh/2 - 2, ww + 8, wh + 4)
-                pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
-                pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
-                self.surface.blit(w_surf, (wx_pos - ww/2, wy_pos - wh/2))
+            # Render node distance or node weight/cost (Level of Detail: omit if zoomed out)
+            if camera.zoom >= 0.45:
+                badge_str = None
+                if algo_state and algo_state.distances and node.id in algo_state.distances:
+                    dist_val = algo_state.distances[node.id]
+                    if dist_val == float('inf'):
+                        badge_str = "d: inf"
+                    else:
+                        badge_str = f"d: {dist_val:.1f}" if dist_val % 1 != 0 else f"d: {int(dist_val)}"
+                elif node.weight != 0.0:
+                    badge_str = f"{node.weight:.1f}" if node.weight % 1 != 0 else f"{int(node.weight)}"
+
+                if badge_str is not None:
+                    if not hasattr(self, "font_weight"):
+                        try:
+                            self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
+                        except FileNotFoundError:
+                            self.font_weight = pygame.font.SysFont("monospace", 11)
+                    
+                    w_surf = self.font_weight.render(badge_str, True, cfg.THEME["edge_weight_text"])
+                    ww, wh = w_surf.get_size()
+                    wx_pos = sx
+                    wy_pos = sy - s_radius - wh/2 - 6
+                    
+                    bg_rect = pygame.Rect(wx_pos - ww/2 - 4, wy_pos - wh/2 - 2, ww + 8, wh + 4)
+                    pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
+                    pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
+                    self.surface.blit(w_surf, (wx_pos - ww/2, wy_pos - wh/2))
 
 
     # ------------------------------------------------------------------

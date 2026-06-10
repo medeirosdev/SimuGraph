@@ -39,6 +39,10 @@ class Toolbar:
                     ("bfs", "Breadth-First Search (BFS)"),
                     ("dfs", "Depth-First Search (DFS)"),
                     ("dijkstra", "Dijkstra's Algorithm"),
+                    ("bellman", "Bellman-Ford Algorithm"),
+                    ("kruskal", "Kruskal's MST"),
+                    ("prim", "Prim's MST"),
+                    ("toposort", "Topological Sort"),
                     ("scc", "SCC Color Coding"),
                     ("bridges", "Bridges & Cut Vertices"),
                 ]

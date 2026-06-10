@@ -36,11 +36,13 @@ class Inspector:
         # Interactive rects
         self.pin_toggle_rect = pygame.Rect(0, 0, 0, 0)
         self.color_rects: list[tuple[pygame.Color, pygame.Rect]] = []
+        self.export_button_rect = pygame.Rect(0, 0, 0, 0)
 
-    def draw(self, surface: pygame.Surface, selected_node: Node | None, selected_edge: Edge | None) -> None:
+    def draw(self, surface: pygame.Surface, selected_node: Node | None, selected_edge: Edge | None, algo_runner: Any | None = None) -> None:
         # Clear interactive rects
         self.pin_toggle_rect = pygame.Rect(0, 0, 0, 0)
         self.color_rects.clear()
+        self.export_button_rect = pygame.Rect(0, 0, 0, 0)
 
         # Draw panel background & border
         bg_color = cfg.THEME["sidebar_bg"]
@@ -53,8 +55,10 @@ class Inspector:
         surface.blit(header_text, (self.x + 15, self.y + 15))
         pygame.draw.line(surface, border_color, (self.x + 15, self.y + 40), (self.x + self.width - 15, self.y + 40), 1)
 
-        # Check selection state
-        if selected_node:
+        # Check selection state / algorithm runner
+        if algo_runner and algo_runner.algorithm:
+            self._draw_algorithm_properties(surface, algo_runner)
+        elif selected_node:
             self._draw_node_properties(surface, selected_node)
         elif selected_edge:
             self._draw_edge_properties(surface, selected_edge)
@@ -190,14 +194,72 @@ class Inspector:
             lbl = self.font_body.render(line, True, color)
             surface.blit(lbl, (x, y + i * 20))
 
-    def handle_click(self, mx: int, my: int, selected_node: Node | None, selected_edge: Edge | None) -> tuple[str, Any] | None:
+    def _draw_algorithm_properties(self, surface: pygame.Surface, algo_runner: Any) -> None:
+        y_offset = self.y + 60
+        text_color = cfg.THEME["text"]
+        dim_color = cfg.THEME["text_dim"]
+        accent_color = cfg.THEME["accent"]
+
+        # Algorithm name
+        name_lbl = self.font_body.render(algo_runner.algorithm.name, True, accent_color)
+        surface.blit(name_lbl, (self.x + 15, y_offset))
+        y_offset += 25
+
+        # Step count
+        curr_state = algo_runner.current_state
+        if curr_state:
+            step_lbl = self.font_body.render(f"Step {curr_state.step_index} / {curr_state.total_steps}", True, text_color)
+            surface.blit(step_lbl, (self.x + 15, y_offset))
+            y_offset += 25
+            
+            # Status play/pause
+            status_str = "Status: PLAYING" if algo_runner.playing else "Status: PAUSED"
+            status_color = (80, 220, 120) if algo_runner.playing else (220, 180, 60)
+            status_lbl = self.font_body.render(status_str, True, status_color)
+            surface.blit(status_lbl, (self.x + 15, y_offset))
+            y_offset += 25
+
+            # Speed
+            speed_lbl = self.font_body.render(f"Speed: {algo_runner.speed_fps:.1f} Hz", True, dim_color)
+            surface.blit(speed_lbl, (self.x + 15, y_offset))
+            y_offset += 35
+
+            # Divider
+            pygame.draw.line(surface, cfg.THEME["panel_border"], (self.x + 15, y_offset), (self.x + self.width - 15, y_offset), 1)
+            y_offset += 15
+
+            # Detail text
+            detail_title = self.font_body.render("State Details:", True, accent_color)
+            surface.blit(detail_title, (self.x + 15, y_offset))
+            y_offset += 25
+            
+            self._render_multiline_text(surface, curr_state.detail_text, self.x + 15, y_offset, text_color)
+            
+            # Interactive Buttons (e.g. Export Results)
+            self.export_button_rect = pygame.Rect(self.x + 15, self.y + self.height - 45, self.width - 30, 30)
+            pygame.draw.rect(surface, cfg.THEME["panel_border"], self.export_button_rect, border_radius=6)
+            exp_lbl = self.font_body.render("Export Results (.txt)", True, text_color)
+            surface.blit(exp_lbl, exp_lbl.get_rect(center=self.export_button_rect.center))
+
+    def handle_click(
+        self,
+        mx: int,
+        my: int,
+        selected_node: Node | None,
+        selected_edge: Edge | None,
+        algo_runner: Any | None = None
+    ) -> tuple[str, Any] | None:
         """
         Processes click in inspector.
         Returns:
-            ("pin", value), ("color", color_tuple), ("node_weight", None), ("edge_weight", None)
+            ("pin", value), ("color", color_tuple), ("node_weight", None), ("edge_weight", None), ("export_results", None)
         """
         if not self.rect.collidepoint(mx, my):
             return None
+
+        # Check export button click
+        if algo_runner and algo_runner.algorithm and hasattr(self, "export_button_rect") and self.export_button_rect.collidepoint(mx, my):
+            return ("export_results", None)
 
         # Check pin toggle click
         if selected_node and hasattr(self, "pin_toggle_rect") and self.pin_toggle_rect.collidepoint(mx, my):
