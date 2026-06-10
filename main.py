@@ -22,7 +22,7 @@ from simugraph.commands.history import (
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
     RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand,
     ColorComponentsCommand, ChangeNodeWeightCommand, ChangeEdgeWeightCommand,
-    MoveNodesCommand, RemoveNodesCommand
+    MoveNodesCommand, RemoveNodesCommand, PasteSubgraphCommand
 )
 
 
@@ -132,6 +132,12 @@ def main() -> None:
 
     dragging_group: dict[str, tuple[float, float]] = {}
 
+    # Clipboard state
+    clipboard_nodes: list[dict] = []
+    clipboard_edges: list[dict] = []
+    clipboard_source_ids: list[str] = []
+    paste_count = 0
+
     running = True
     while running:
         dt = clock.tick(cfg.FPS)
@@ -238,6 +244,94 @@ def main() -> None:
                         history.execute(RemoveNodesCommand(selected_nodes, list(incident_edges)), graph)
                         dragging_node = None
                         edge_start_node = None
+
+                # Copy subgraph: Ctrl+C
+                elif event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL):
+                    selected_nodes = [n for n in graph.nodes() if n.selected]
+                    if selected_nodes:
+                        clipboard_nodes.clear()
+                        clipboard_edges.clear()
+                        clipboard_source_ids.clear()
+                        paste_count = 0
+                        
+                        selected_ids = {n.id for n in selected_nodes}
+                        for n in selected_nodes:
+                            clipboard_nodes.append({
+                                "label": n.label,
+                                "x": n.x,
+                                "y": n.y,
+                                "color": n.color,
+                                "radius": n.radius,
+                                "weight": n.weight
+                            })
+                            clipboard_source_ids.append(n.id)
+                            
+                        for edge in graph.edges():
+                            if edge.u in selected_ids and edge.v in selected_ids:
+                                clipboard_edges.append({
+                                     "u": edge.u,
+                                     "v": edge.v,
+                                     "weight": edge.weight,
+                                     "directed": edge.directed,
+                                     "color": edge.color
+                                })
+
+                # Paste subgraph: Ctrl+V
+                elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL):
+                    if clipboard_nodes:
+                        for node in graph.nodes():
+                            node.selected = False
+                            
+                        import uuid
+                        from simugraph.core.node import Node
+                        from simugraph.core.edge import Edge
+                        
+                        paste_count += 1
+                        offset = 30 * paste_count
+                        
+                        id_map = {}
+                        new_nodes = []
+                        new_edges = []
+                        
+                        for idx, old_id in enumerate(clipboard_source_ids):
+                            node_data = clipboard_nodes[idx]
+                            new_id = str(uuid.uuid4())
+                            new_label = get_next_node_label(graph)
+                            
+                            pasted_node = Node(
+                                id=new_id,
+                                label=new_label,
+                                x=node_data["x"] + offset,
+                                y=node_data["y"] + offset,
+                                color=node_data["color"],
+                                radius=node_data["radius"],
+                                weight=node_data["weight"],
+                                selected=True
+                            )
+                            graph.add_node(pasted_node)
+                            new_nodes.append(pasted_node)
+                            id_map[old_id] = new_id
+                            
+                        for node in new_nodes:
+                            graph.remove_node(node.id)
+                            
+                        for edge_data in clipboard_edges:
+                            new_u = id_map.get(edge_data["u"])
+                            new_v = id_map.get(edge_data["v"])
+                            if new_u and new_v:
+                                new_edge_id = str(uuid.uuid4())
+                                pasted_edge = Edge(
+                                    id=new_edge_id,
+                                    u=new_u,
+                                    v=new_v,
+                                    weight=edge_data["weight"],
+                                    directed=edge_data["directed"],
+                                    color=edge_data["color"],
+                                    selected=True
+                                )
+                                new_edges.append(pasted_edge)
+                                
+                        history.execute(PasteSubgraphCommand(new_nodes, new_edges), graph)
 
                 # Toggle cheatsheet: ? / /
                 elif event.key in (pygame.K_SLASH, pygame.K_QUESTION) or (event.key == pygame.K_SLASH and (event.mod & pygame.KMOD_SHIFT)):

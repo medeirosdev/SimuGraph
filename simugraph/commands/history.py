@@ -230,6 +230,25 @@ class RemoveNodesCommand(Command):
             graph.add_edge(edge)
 
 
+class PasteSubgraphCommand(Command):
+    """Command to paste a copied subgraph with offset and new IDs."""
+    def __init__(self, nodes: list[Node], edges: list[Edge]) -> None:
+        self.nodes = nodes
+        self.edges = edges
+
+    def execute(self, graph: Graph) -> None:
+        for node in self.nodes:
+            graph.add_node(node)
+        for edge in self.edges:
+            graph.add_edge(edge)
+
+    def undo(self, graph: Graph) -> None:
+        for edge in self.edges:
+            graph.remove_edge(edge.id)
+        for node in self.nodes:
+            graph.remove_node(node.id)
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 
