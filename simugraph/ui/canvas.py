@@ -149,44 +149,46 @@ class Canvas:
                     target_node = v_node if edge.v == v_id else u_node
                     target_x, target_y = (sv_x, sy_v) if edge.v == v_id else (su_x, sy_u)
 
-                # Draw flow particles along the edge trajectory
-                t_offset = (pygame.time.get_ticks() / 1800.0) % 1.0
-                particle_color = cfg.THEME["accent"]
-                u_radius_px = u_node.radius * camera.zoom
-                v_radius_px = v_node.radius * camera.zoom
-                for i in range(3):
-                    t_val = (t_offset + i / 3.0) % 1.0
-                    # Align flow direction from edge.u to edge.v
-                    if edge.u == v_id:
-                        t_val = 1.0 - t_val
+                # Draw flow particles along the edge trajectory (LOD: skip if zoomed out far)
+                if camera.zoom >= 0.4:
+                    t_offset = (pygame.time.get_ticks() / 1800.0) % 1.0
+                    particle_color = cfg.THEME["accent"]
+                    u_radius_px = u_node.radius * camera.zoom
+                    v_radius_px = v_node.radius * camera.zoom
+                    for i in range(3):
+                        t_val = (t_offset + i / 3.0) % 1.0
+                        # Align flow direction from edge.u to edge.v
+                        if edge.u == v_id:
+                            t_val = 1.0 - t_val
 
-                    if num_edges == 1:
-                        px = su_x * (1 - t_val) + sv_x * t_val
-                        py = sy_u * (1 - t_val) + sy_v * t_val
-                    else:
-                        px = (1 - t_val)**2 * su_x + 2 * (1 - t_val) * t_val * cx + t_val**2 * sv_x
-                        py = (1 - t_val)**2 * sy_u + 2 * (1 - t_val) * t_val * cy + t_val**2 * sy_v
-                    
-                    dist_u = ((px - su_x)**2 + (py - sy_u)**2)**0.5
-                    dist_v = ((px - sv_x)**2 + (py - sy_v)**2)**0.5
-                    
-                    if dist_u > u_radius_px and dist_v > v_radius_px:
-                        pygame.draw.circle(self.surface, particle_color, (int(px), int(py)), 3)
+                        if num_edges == 1:
+                            px = su_x * (1 - t_val) + sv_x * t_val
+                            py = sy_u * (1 - t_val) + sy_v * t_val
+                        else:
+                            px = (1 - t_val)**2 * su_x + 2 * (1 - t_val) * t_val * cx + t_val**2 * sv_x
+                            py = (1 - t_val)**2 * sy_u + 2 * (1 - t_val) * t_val * cy + t_val**2 * sy_v
+                        
+                        dist_u = ((px - su_x)**2 + (py - sy_u)**2)**0.5
+                        dist_v = ((px - sv_x)**2 + (py - sy_v)**2)**0.5
+                        
+                        if dist_u > u_radius_px and dist_v > v_radius_px:
+                            pygame.draw.circle(self.surface, particle_color, (int(px), int(py)), 3)
 
-                # Draw edge weight
-                weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
-                if not hasattr(self, "font_weight"):
-                    try:
-                        self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
-                    except FileNotFoundError:
-                        self.font_weight = pygame.font.SysFont("monospace", 11)
+                # Draw edge weight (LOD: skip if zoomed out far)
+                if camera.zoom >= 0.5:
+                    weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
+                    if not hasattr(self, "font_weight"):
+                        try:
+                            self.font_weight = pygame.font.Font(cfg.FONT_MONO_PATH, 11)
+                        except FileNotFoundError:
+                            self.font_weight = pygame.font.SysFont("monospace", 11)
 
-                text_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
-                tw, th = text_surf.get_size()
-                bg_rect = pygame.Rect(mid_x - tw/2 - 4, mid_y - th/2 - 2, tw + 8, th + 4)
-                pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
-                pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
-                self.surface.blit(text_surf, (mid_x - tw/2, mid_y - th/2))
+                    text_surf = self.font_weight.render(weight_str, True, cfg.THEME["edge_weight_text"])
+                    tw, th = text_surf.get_size()
+                    bg_rect = pygame.Rect(mid_x - tw/2 - 4, mid_y - th/2 - 2, tw + 8, th + 4)
+                    pygame.draw.rect(self.surface, cfg.THEME["edge_weight_bg"], bg_rect, border_radius=4)
+                    pygame.draw.rect(self.surface, cfg.THEME["panel_border"], bg_rect, width=1, border_radius=4)
+                    self.surface.blit(text_surf, (mid_x - tw/2, mid_y - th/2))
 
                 # Draw arrowhead for directed edges
                 if edge.directed:
@@ -260,14 +262,14 @@ class Canvas:
             if node.selected:
                 pygame.gfxdraw.aacircle(self.surface, sx, sy, max(1, s_radius - 2), (20, 20, 20))
 
-            # Render text label
-            if node.label:
+            # Render text label (Level of Detail: omit if zoomed out too far)
+            if node.label and camera.zoom >= 0.3:
                 text_surf = self.font_node.render(node.label, True, cfg.THEME["node_label"])
                 text_rect = text_surf.get_rect(center=(sx, sy))
                 self.surface.blit(text_surf, text_rect)
 
-            # Render node weight/cost if non-zero
-            if node.weight != 0.0:
+            # Render node weight/cost if non-zero (Level of Detail: omit if zoomed out)
+            if node.weight != 0.0 and camera.zoom >= 0.45:
                 weight_str = f"{node.weight:.1f}" if node.weight % 1 != 0 else f"{int(node.weight)}"
                 if not hasattr(self, "font_weight"):
                     try:
