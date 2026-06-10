@@ -21,7 +21,8 @@ from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
     RenameNodeCommand, ChangeNodeColorCommand, ToggleNodePinCommand,
-    ColorComponentsCommand, ChangeNodeWeightCommand, ChangeEdgeWeightCommand
+    ColorComponentsCommand, ChangeNodeWeightCommand, ChangeEdgeWeightCommand,
+    MoveNodesCommand
 )
 
 
@@ -114,6 +115,16 @@ def main() -> None:
         bridges.clear()
     history.on_change_callbacks.append(clear_highlights)
 
+    # Spring Layout state
+    layout_steps_remaining = 0
+    layout_initial_positions = {}
+    layout_temperature = 20.0
+
+    def stop_layout():
+        nonlocal layout_steps_remaining
+        layout_steps_remaining = 0
+    history.on_change_callbacks.append(stop_layout)
+
     running = True
     while running:
         dt = clock.tick(cfg.FPS)
@@ -199,6 +210,15 @@ def main() -> None:
                 # Toggle directed edges: D
                 elif event.key == pygame.K_d:
                     directed_edges = not directed_edges
+
+                # Auto-layout: L
+                elif event.key == pygame.K_l:
+                    if layout_steps_remaining == 0:
+                        nodes_list = graph.nodes()
+                        if len(nodes_list) >= 2:
+                            layout_initial_positions = {n.id: (n.x, n.y) for n in nodes_list}
+                            layout_steps_remaining = 75
+                            layout_temperature = 25.0
 
                 # Toggle cheatsheet: ? / /
                 elif event.key in (pygame.K_SLASH, pygame.K_QUESTION) or (event.key == pygame.K_SLASH and (event.mod & pygame.KMOD_SHIFT)):
@@ -455,6 +475,24 @@ def main() -> None:
                 mx, my = pygame.mouse.get_pos()
                 factor = cfg.ZOOM_FACTOR_SCROLL if event.y > 0 else 1 / cfg.ZOOM_FACTOR_SCROLL
                 camera.zoom_at(mx, my, factor)
+
+        # --- Update spring layout ---
+        if layout_steps_remaining > 0:
+            from simugraph.algorithms.layout import run_fruchterman_reingold_step
+            run_fruchterman_reingold_step(graph, temp=layout_temperature)
+            layout_temperature = max(1.0, layout_temperature * 0.94)
+            layout_steps_remaining -= 1
+            if layout_steps_remaining == 0:
+                # Final register of MoveNodesCommand to support undo/redo
+                moves = {}
+                for node in graph.nodes():
+                    old_pos = layout_initial_positions.get(node.id)
+                    if old_pos:
+                        new_pos = (node.x, node.y)
+                        if old_pos != new_pos:
+                            moves[node.id] = (old_pos, new_pos)
+                if moves:
+                    history.push(MoveNodesCommand(moves))
 
         # ----------------------------------------------------------------
         # Clear layers

@@ -194,6 +194,25 @@ class ChangeEdgeWeightCommand(Command):
             edge.weight = self.old_weight
 
 
+class MoveNodesCommand(Command):
+    """Command to move a group of nodes simultaneously."""
+    def __init__(self, moves: dict[str, tuple[tuple[float, float], tuple[float, float]]]) -> None:
+        # moves maps node_id -> (old_pos, new_pos)
+        self.moves = moves
+
+    def execute(self, graph: Graph) -> None:
+        for node_id, (_, new_pos) in self.moves.items():
+            node = graph.get_node(node_id)
+            if node:
+                node.x, node.y = new_pos
+
+    def undo(self, graph: Graph) -> None:
+        for node_id, (old_pos, _) in self.moves.items():
+            node = graph.get_node(node_id)
+            if node:
+                node.x, node.y = old_pos
+
+
 class CommandHistory:
     """Manages the undo and redo stacks."""
 
