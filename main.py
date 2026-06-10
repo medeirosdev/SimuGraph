@@ -130,6 +130,8 @@ def main() -> None:
     hover_start_ticks = 0
     tooltip_font = _load_font(cfg.FONT_MONO_PATH, 11)
 
+    dragging_group: dict[str, tuple[float, float]] = {}
+
     running = True
     while running:
         dt = clock.tick(cfg.FPS)
@@ -335,10 +337,12 @@ def main() -> None:
                             last_clicked_node_id = clicked_node.id
 
                             if active_tool == "select":
-                                # Deselect others and select this one
-                                for node in graph.nodes():
-                                    node.selected = False
-                                clicked_node.selected = True
+                                if not clicked_node.selected:
+                                    # Deselect others and select this one
+                                    for node in graph.nodes():
+                                        node.selected = False
+                                    clicked_node.selected = True
+                                dragging_group = {node.id: (node.x, node.y) for node in graph.nodes() if node.selected}
                                 dragging_node = clicked_node
                                 drag_start_pos = (clicked_node.x, clicked_node.y)
                             elif active_tool == "edge":
@@ -366,6 +370,10 @@ def main() -> None:
                                 incident_edges = graph.edges_of(clicked_node.id)
                                 history.execute(RemoveNodeCommand(clicked_node, incident_edges), graph)
                             else:
+                                if clicked_node.selected:
+                                    dragging_group = {node.id: (node.x, node.y) for node in graph.nodes() if node.selected}
+                                else:
+                                    dragging_group = {clicked_node.id: (clicked_node.x, clicked_node.y)}
                                 dragging_node = clicked_node
                                 drag_start_pos = (clicked_node.x, clicked_node.y)
                         else:
@@ -445,12 +453,23 @@ def main() -> None:
                     selection_box_start = None
                     selection_box_current = None
                     if dragging_node and drag_start_pos:
-                        # If node has moved, register the MoveNodeCommand in history
-                        end_pos = (dragging_node.x, dragging_node.y)
-                        if end_pos != drag_start_pos:
-                            history.push(MoveNodeCommand(dragging_node.id, drag_start_pos, end_pos))
+                        if len(dragging_group) > 1:
+                            moves = {}
+                            for nid, start_pos in dragging_group.items():
+                                n = graph.get_node(nid)
+                                if n:
+                                    end_pos = (n.x, n.y)
+                                    if start_pos != end_pos:
+                                        moves[nid] = (start_pos, end_pos)
+                            if moves:
+                                history.push(MoveNodesCommand(moves))
+                        else:
+                            end_pos = (dragging_node.x, dragging_node.y)
+                            if end_pos != drag_start_pos:
+                                history.push(MoveNodeCommand(dragging_node.id, drag_start_pos, end_pos))
                     dragging_node = None
                     drag_start_pos = None
+                    dragging_group.clear()
                 elif event.button == 2:  # Middle click release stops panning
                     is_panning = False
 
@@ -466,14 +485,19 @@ def main() -> None:
                     y_min, y_max = sorted([wy_start, wy_curr])
                     for node in graph.nodes():
                         node.selected = (x_min <= node.x <= x_max and y_min <= node.y <= y_max)
-                elif dragging_node:
+                elif dragging_node and drag_start_pos:
                     wx, wy = camera.screen_to_world(mx, my)
-                    if snap_enabled:
-                        dragging_node.x = round(wx / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
-                        dragging_node.y = round(wy / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
-                    else:
-                        dragging_node.x = wx
-                        dragging_node.y = wy
+                    dx = wx - drag_start_pos[0]
+                    dy = wy - drag_start_pos[1]
+                    for nid, start_pos in dragging_group.items():
+                        node = graph.get_node(nid)
+                        if node:
+                            if snap_enabled:
+                                node.x = round((start_pos[0] + dx) / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
+                                node.y = round((start_pos[1] + dy) / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
+                            else:
+                                node.x = start_pos[0] + dx
+                                node.y = start_pos[1] + dy
 
             # Scroll-wheel zoom centred on mouse
             elif event.type == pygame.MOUSEWHEEL:
