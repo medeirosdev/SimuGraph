@@ -12,7 +12,7 @@ from simugraph.ui.sidebar import Sidebar
 from simugraph.ui.toolbar import Toolbar
 from simugraph.ui.inspector import Inspector
 from simugraph.ui.hud import HUD
-from simugraph.ui.dialog import InputDialog
+from simugraph.ui.dialog import InputDialog, MultiInputDialog
 from simugraph.ui.overlay import CheatsheetOverlay
 from simugraph.ui.context_menu import ContextMenu
 from simugraph.core.graph import Graph
@@ -93,7 +93,7 @@ def main() -> None:
     history = CommandHistory()
     
     # Dialog management
-    active_dialog: InputDialog | None = None
+    active_dialog: InputDialog | MultiInputDialog | None = None
     dialog_callback = None
     
     # Cheatsheet overlay
@@ -400,6 +400,56 @@ def main() -> None:
                             articulation_points.update(ap_ids)
                             bridges.clear()
                             bridges.update(br_ids)
+                    elif menu_id == "generate":
+                        def make_gen_callback(generator_func):
+                            def cb(vals):
+                                if vals is None: return
+                                try:
+                                    parsed_args = []
+                                    for val in vals:
+                                        if "." in val:
+                                            parsed_args.append(float(val))
+                                        else:
+                                            parsed_args.append(int(val))
+                                    nodes, edges = generator_func(*parsed_args)
+                                    nonlocal graph, edge_start_node
+                                    graph = Graph()
+                                    history.clear()
+                                    edge_start_node = None
+                                    for node in nodes: graph.add_node(node)
+                                    for edge in edges: graph.add_edge(edge)
+                                except Exception as e:
+                                    print("Generation failed:", e)
+                            return cb
+
+                        if action_id == "gen_random":
+                            from simugraph.generators import generate_random_graph
+                            active_dialog = MultiInputDialog("Random Graph Parameters", [("Nodes (n)", "10"), ("Probability (p)", "0.3")])
+                            dialog_callback = make_gen_callback(generate_random_graph)
+                        elif action_id == "gen_complete":
+                            from simugraph.generators import generate_complete
+                            active_dialog = MultiInputDialog("Complete Graph Parameters", [("Nodes (n)", "6")])
+                            dialog_callback = make_gen_callback(generate_complete)
+                        elif action_id == "gen_bipartite":
+                            from simugraph.generators import generate_bipartite
+                            active_dialog = MultiInputDialog("Bipartite Parameters", [("Part 1 nodes (n1)", "4"), ("Part 2 nodes (n2)", "4")])
+                            dialog_callback = make_gen_callback(generate_bipartite)
+                        elif action_id == "gen_tree":
+                            from simugraph.generators import generate_tree
+                            active_dialog = MultiInputDialog("Tree Parameters", [("Nodes (n)", "10")])
+                            dialog_callback = make_gen_callback(generate_tree)
+                        elif action_id == "gen_grid":
+                            from simugraph.generators import generate_grid
+                            active_dialog = MultiInputDialog("Grid Parameters", [("Rows (r)", "4"), ("Columns (c)", "4")])
+                            dialog_callback = make_gen_callback(generate_grid)
+                        elif action_id == "gen_cycle":
+                            from simugraph.generators import generate_cycle
+                            active_dialog = MultiInputDialog("Cycle Parameters", [("Nodes (n)", "8")])
+                            dialog_callback = make_gen_callback(generate_cycle)
+                        elif action_id == "gen_barabasi":
+                            from simugraph.generators import generate_barabasi_albert
+                            active_dialog = MultiInputDialog("Scale-free Parameters", [("Nodes (n)", "15"), ("Edges per step (m)", "2")])
+                            dialog_callback = make_gen_callback(generate_barabasi_albert)
                     continue
                 # If a dropdown is active, clicks outside should close it and consume the event
                 if toolbar.active_menu_id:

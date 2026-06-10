@@ -48,8 +48,13 @@ class Toolbar:
                 "label": "Generate",
                 "rect": pygame.Rect(200, 4, 90, self.height - 8),
                 "items": [
-                    ("gen_random", "Random Graph..."),
+                    ("gen_random", "Random Graph (Erdős–Rényi)..."),
                     ("gen_complete", "Complete Graph..."),
+                    ("gen_bipartite", "Complete Bipartite Graph..."),
+                    ("gen_tree", "Random Spanning Tree..."),
+                    ("gen_grid", "Grid Graph..."),
+                    ("gen_cycle", "Cycle Graph..."),
+                    ("gen_barabasi", "Scale-free (Barabási–Albert)..."),
                 ]
             }
         ]
