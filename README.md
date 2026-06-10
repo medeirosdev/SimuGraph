@@ -1,6 +1,6 @@
 # SimuGraph
 
-![SimuGraph Banner](assets/banner.png)
+![SimuGraph Banner](assets/abstractfluid.jpg)
 
 SimuGraph is an interactive desktop graph simulator and visualizer built with Pygame. It allows users to build, manipulate, and analyze graphs dynamically while watching step-by-step algorithms execute with real-time feedback.
 
