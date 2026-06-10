@@ -40,6 +40,7 @@ class Toolbar:
                     ("dfs", "Depth-First Search (DFS)"),
                     ("dijkstra", "Dijkstra's Algorithm"),
                     ("scc", "SCC Color Coding"),
+                    ("bridges", "Bridges & Cut Vertices"),
                 ]
             },
             {

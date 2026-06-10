@@ -105,6 +105,15 @@ def main() -> None:
     selection_box_start: tuple[int, int] | None = None
     selection_box_current: tuple[int, int] | None = None
 
+    # Connectivity highlights (Bridges & Articulation Points)
+    articulation_points: set[str] = set()
+    bridges: set[str] = set()
+
+    def clear_highlights():
+        articulation_points.clear()
+        bridges.clear()
+    history.on_change_callbacks.append(clear_highlights)
+
     running = True
     while running:
         dt = clock.tick(cfg.FPS)
@@ -225,6 +234,13 @@ def main() -> None:
                                 for nid in comp:
                                     color_map[nid] = color
                             history.execute(ColorComponentsCommand(color_map), graph)
+                        elif action_id == "bridges":
+                            from simugraph.algorithms.connectivity import find_bridges_and_articulation_points
+                            ap_ids, br_ids = find_bridges_and_articulation_points(graph)
+                            articulation_points.clear()
+                            articulation_points.update(ap_ids)
+                            bridges.clear()
+                            bridges.update(br_ids)
                     continue
                 # If a dropdown is active, clicks outside should close it and consume the event
                 if toolbar.active_menu_id:
@@ -449,7 +465,7 @@ def main() -> None:
         sel_box = None
         if selection_box_start and selection_box_current:
             sel_box = (*selection_box_start, *selection_box_current)
-        canvas.draw(camera, graph, edge_start_node, sel_box)
+        canvas.draw(camera, graph, edge_start_node, sel_box, articulation_points, bridges)
         ui_surf.fill((0, 0, 0, 0))
         
         # Draw Sidebar

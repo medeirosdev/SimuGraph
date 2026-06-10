@@ -200,17 +200,20 @@ class CommandHistory:
     def __init__(self) -> None:
         self.undo_stack: list[Command] = []
         self.redo_stack: list[Command] = []
+        self.on_change_callbacks: list[callable] = []
 
     def execute(self, command: Command, graph: Graph) -> None:
         """Run a command and push it to the undo stack, clearing the redo stack."""
         command.execute(graph)
         self.undo_stack.append(command)
         self.redo_stack.clear()
+        self._trigger_on_change()
 
     def push(self, command: Command) -> None:
         """Directly append a pre-executed command to the undo stack."""
         self.undo_stack.append(command)
         self.redo_stack.clear()
+        self._trigger_on_change()
 
     def undo(self, graph: Graph) -> None:
         """Undo the last command."""
@@ -219,6 +222,7 @@ class CommandHistory:
         command = self.undo_stack.pop()
         command.undo(graph)
         self.redo_stack.append(command)
+        self._trigger_on_change()
 
     def redo(self, graph: Graph) -> None:
         """Redo the last undone command."""
@@ -227,7 +231,13 @@ class CommandHistory:
         command = self.redo_stack.pop()
         command.execute(graph)
         self.undo_stack.append(command)
+        self._trigger_on_change()
 
     def clear(self) -> None:
         self.undo_stack.clear()
         self.redo_stack.clear()
+        self._trigger_on_change()
+
+    def _trigger_on_change(self) -> None:
+        for cb in self.on_change_callbacks:
+            cb()

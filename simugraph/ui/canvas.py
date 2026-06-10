@@ -35,12 +35,20 @@ class Canvas:
     # Public API
     # ------------------------------------------------------------------
 
-    def draw(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None, selection_box: tuple[int, int, int, int] | None = None) -> None:
+    def draw(
+        self,
+        camera: Camera,
+        graph: Graph,
+        edge_start_node: Node | None = None,
+        selection_box: tuple[int, int, int, int] | None = None,
+        articulation_points: set[str] | None = None,
+        bridges: set[str] | None = None
+    ) -> None:
         """Clear the surface and redraw everything for one frame."""
         self.surface.fill((0, 0, 0, 0))
         self._draw_grid(camera)
-        self._draw_edges(camera, graph, edge_start_node)
-        self._draw_nodes(camera, graph)
+        self._draw_edges(camera, graph, edge_start_node, bridges=bridges)
+        self._draw_nodes(camera, graph, articulation_points=articulation_points)
         if selection_box:
             self._draw_selection_box(selection_box)
 
@@ -58,7 +66,7 @@ class Canvas:
             # Border
             pygame.draw.rect(self.surface, cfg.THEME["selection_border"], box_rect, width=1)
 
-    def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None) -> None:
+    def _draw_edges(self, camera: Camera, graph: Graph, edge_start_node: Node | None = None, bridges: set[str] | None = None) -> None:
         """Draw all edges in the graph using straight or Bezier curves for parallel edges."""
         import math
         from collections import defaultdict
@@ -97,6 +105,8 @@ class Canvas:
                     lc_y = sy_u + loop_offset * math.sin(theta)
                     
                     # Draw circular loop arc (pygame.draw.circle is clipped by node fill)
+                    if bridges and edge.id in bridges:
+                        pygame.draw.circle(self.surface, (255, 107, 107), (int(lc_x), int(lc_y)), int(loop_r), width=5)
                     pygame.draw.circle(self.surface, color, (int(lc_x), int(lc_y)), int(loop_r), width=2)
                     
                     # Arrowhead for directed self-loops
@@ -161,6 +171,8 @@ class Canvas:
                 # Determine curve offset: if only 1 edge, straight line. Otherwise offset curves.
                 if num_edges == 1:
                     # Straight line
+                    if bridges and edge.id in bridges:
+                        pygame.draw.line(self.surface, (255, 107, 107), (su_x, sy_u), (sv_x, sy_v), 5)
                     pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), 2)
                     
                     mid_x = (su_x + sv_x) / 2
@@ -206,6 +218,8 @@ class Canvas:
                         py = (1 - t)**2 * sy_u + 2 * (1 - t) * t * cy + t**2 * sy_v
                         points.append((px, py))
                     
+                    if bridges and edge.id in bridges:
+                        pygame.draw.lines(self.surface, (255, 107, 107), False, points, 5)
                     pygame.draw.lines(self.surface, color, False, points, 2)
                     
                     # Midpoint of the curve is P(0.5)
@@ -289,7 +303,7 @@ class Canvas:
             mx, my = pygame.mouse.get_pos()
             pygame.draw.line(self.surface, (*cfg.THEME["accent"][:3], 150), (su_x, sy_u), (mx, my), 2)
 
-    def _draw_nodes(self, camera: Camera, graph: Graph) -> None:
+    def _draw_nodes(self, camera: Camera, graph: Graph, articulation_points: set[str] | None = None) -> None:
         """Draw all nodes in the graph using anti-aliased primitives."""
         import pygame.gfxdraw
         if not hasattr(self, "font_node"):
@@ -331,6 +345,10 @@ class Canvas:
             # Draw filled circle & smooth outer outline
             pygame.gfxdraw.filled_circle(self.surface, sx, sy, s_radius, fill_color)
             pygame.gfxdraw.aacircle(self.surface, sx, sy, s_radius, stroke_color)
+            
+            # Articulation Point indicator (glowing target ring)
+            if articulation_points and node.id in articulation_points:
+                pygame.draw.circle(self.surface, (255, 204, 0), (sx, sy), s_radius + 5, width=2)
             
             # Subtle inner ring if selected
             if node.selected:
