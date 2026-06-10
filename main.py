@@ -125,6 +125,11 @@ def main() -> None:
         layout_steps_remaining = 0
     history.on_change_callbacks.append(stop_layout)
 
+    # Node hover tooltip state
+    hovered_node_id: str | None = None
+    hover_start_ticks = 0
+    tooltip_font = _load_font(cfg.FONT_MONO_PATH, 11)
+
     running = True
     while running:
         dt = clock.tick(cfg.FPS)
@@ -494,6 +499,25 @@ def main() -> None:
                 if moves:
                     history.push(MoveNodesCommand(moves))
 
+        # Track node hover for tooltip
+        mx, my = pygame.mouse.get_pos()
+        m_wx, m_wy = camera.screen_to_world(mx, my)
+        current_hovered = None
+        if cfg.SIDEBAR_W < mx < cfg.WINDOW_W - cfg.INSPECTOR_W and cfg.TOOLBAR_H < my < cfg.WINDOW_H - cfg.HUD_H:
+            for node in graph.nodes():
+                dist = ((node.x - m_wx)**2 + (node.y - m_wy)**2)**0.5
+                if dist <= node.radius:
+                    current_hovered = node
+                    break
+        
+        if current_hovered:
+            if hovered_node_id != current_hovered.id:
+                hovered_node_id = current_hovered.id
+                hover_start_ticks = pygame.time.get_ticks()
+        else:
+            hovered_node_id = None
+            hover_start_ticks = 0
+
         # ----------------------------------------------------------------
         # Clear layers
         # ----------------------------------------------------------------
@@ -529,6 +553,53 @@ def main() -> None:
         # Draw Modal Dialogs
         if active_dialog is not None:
             active_dialog.draw(ui_surf)
+
+        # Draw node hover tooltip (with 300ms delay)
+        if hovered_node_id and pygame.time.get_ticks() - hover_start_ticks >= 300:
+            h_node = graph.get_node(hovered_node_id)
+            if h_node:
+                # Calculate degree and degree centrality
+                deg = graph.degree(h_node.id)
+                n_count = graph.node_count()
+                centrality = deg / max(1, n_count - 1)
+                
+                # Render text lines
+                lines = [
+                    f"Label: {h_node.label}",
+                    f"Degree: {deg}",
+                    f"Centrality: {centrality:.2f}"
+                ]
+                
+                rendered_lines = [tooltip_font.render(ln, True, (240, 240, 250)) for ln in lines]
+                w = max(surf.get_width() for surf in rendered_lines) + 16
+                h = sum(surf.get_height() for surf in rendered_lines) + 12
+                
+                # Position near mouse, clamped inside canvas bounds
+                tx = mx + 15
+                ty = my + 15
+                
+                canvas_r = cfg.WINDOW_W - cfg.INSPECTOR_W
+                canvas_b = cfg.WINDOW_H - cfg.HUD_H
+                
+                if tx + w > canvas_r:
+                    tx = mx - w - 10
+                if ty + h > canvas_b:
+                    ty = my - h - 10
+                
+                # Background rect
+                bg_rect = pygame.Rect(tx, ty, w, h)
+                # Drawing transparent surface for background
+                tip_surf = pygame.Surface((w, h), pygame.SRCALPHA)
+                tip_surf.fill((25, 25, 35, 230))  # dark slate with 90% opacity
+                pygame.draw.rect(tip_surf, cfg.THEME["panel_border"], (0, 0, w, h), width=1, border_radius=4)
+                
+                # Blit text onto tip surface
+                curr_y = 6
+                for r_line in rendered_lines:
+                    tip_surf.blit(r_line, (8, curr_y))
+                    curr_y += r_line.get_height() + 2
+                
+                ui_surf.blit(tip_surf, (tx, ty))
 
         # ----------------------------------------------------------------
         # Compose and flip
