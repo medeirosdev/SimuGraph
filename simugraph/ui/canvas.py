@@ -149,6 +149,30 @@ class Canvas:
                     target_node = v_node if edge.v == v_id else u_node
                     target_x, target_y = (sv_x, sy_v) if edge.v == v_id else (su_x, sy_u)
 
+                # Draw flow particles along the edge trajectory
+                t_offset = (pygame.time.get_ticks() / 1800.0) % 1.0
+                particle_color = cfg.THEME["accent"]
+                u_radius_px = u_node.radius * camera.zoom
+                v_radius_px = v_node.radius * camera.zoom
+                for i in range(3):
+                    t_val = (t_offset + i / 3.0) % 1.0
+                    # Align flow direction from edge.u to edge.v
+                    if edge.u == v_id:
+                        t_val = 1.0 - t_val
+
+                    if num_edges == 1:
+                        px = su_x * (1 - t_val) + sv_x * t_val
+                        py = sy_u * (1 - t_val) + sy_v * t_val
+                    else:
+                        px = (1 - t_val)**2 * su_x + 2 * (1 - t_val) * t_val * cx + t_val**2 * sv_x
+                        py = (1 - t_val)**2 * sy_u + 2 * (1 - t_val) * t_val * cy + t_val**2 * sy_v
+                    
+                    dist_u = ((px - su_x)**2 + (py - sy_u)**2)**0.5
+                    dist_v = ((px - sv_x)**2 + (py - sy_v)**2)**0.5
+                    
+                    if dist_u > u_radius_px and dist_v > v_radius_px:
+                        pygame.draw.circle(self.surface, particle_color, (int(px), int(py)), 3)
+
                 # Draw edge weight
                 weight_str = f"{edge.weight:.1f}" if edge.weight % 1 != 0 else f"{int(edge.weight)}"
                 if not hasattr(self, "font_weight"):
