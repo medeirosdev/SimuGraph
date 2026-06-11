@@ -36,9 +36,9 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
     
     # Load banner image
     banner_surf = None
-    if os.path.exists("assets/banner.png"):
+    if os.path.exists("assets/abstractfluid.jpg"):
         try:
-            raw_banner = pygame.image.load("assets/banner.png").convert_alpha()
+            raw_banner = pygame.image.load("assets/abstractfluid.jpg").convert_alpha()
             banner_surf = scale_cover(raw_banner, left_w, h)
         except Exception:
             pass
