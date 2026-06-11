@@ -80,6 +80,9 @@ def main() -> None:
     screen = pygame.display.set_mode((cfg.WINDOW_W, cfg.WINDOW_H))
     clock = pygame.time.Clock()
 
+    from simugraph.ui.splash import show_splash_screen
+    show_splash_screen(screen, clock)
+
     # Sub-surfaces (alpha-capable layers blitted in order each frame)
     canvas = Canvas(cfg.WINDOW_W, cfg.WINDOW_H)
     ui_surf     = pygame.Surface((cfg.WINDOW_W, cfg.WINDOW_H), pygame.SRCALPHA)
