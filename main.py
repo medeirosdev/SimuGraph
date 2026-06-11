@@ -686,8 +686,8 @@ def main() -> None:
                                 canvas_h = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
                                 screen_cx = cfg.SIDEBAR_W + canvas_w / 2
                                 screen_cy = cfg.TOOLBAR_H + canvas_h / 2
-                                camera.x = screen_cx - target.x * camera.zoom
-                                camera.y = screen_cy - target.y * camera.zoom
+                                camera.offset_x = target.x - screen_cx / camera.zoom
+                                camera.offset_y = target.y - screen_cy / camera.zoom
                                 print(f"Search found {len(matches)} matching node(s). Centered on '{target.label}'.")
                             else:
                                 print(f"No nodes matching '{query_str}' found.")
@@ -791,8 +791,8 @@ def main() -> None:
                         canvas_h = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
                         screen_cx = cfg.SIDEBAR_W + canvas_w / 2
                         screen_cy = cfg.TOOLBAR_H + canvas_h / 2
-                        camera.x = screen_cx - all_nodes[new_idx].x * camera.zoom
-                        camera.y = screen_cy - all_nodes[new_idx].y * camera.zoom
+                        camera.offset_x = all_nodes[new_idx].x - screen_cx / camera.zoom
+                        camera.offset_y = all_nodes[new_idx].y - screen_cy / camera.zoom
 
                 # Accessibility select / rename: Enter
                 elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):

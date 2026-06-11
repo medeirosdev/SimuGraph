@@ -77,10 +77,8 @@ class Minimap:
         canvas_h = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
         
         # Viewport coordinates in world space
-        v_world_x1 = (cfg.SIDEBAR_W - camera.x) / camera.zoom
-        v_world_y1 = (cfg.TOOLBAR_H - camera.y) / camera.zoom
-        v_world_x2 = v_world_x1 + canvas_w / camera.zoom
-        v_world_y2 = v_world_y1 + canvas_h / camera.zoom
+        v_world_x1, v_world_y1 = camera.screen_to_world(cfg.SIDEBAR_W, cfg.TOOLBAR_H)
+        v_world_x2, v_world_y2 = camera.screen_to_world(cfg.SIDEBAR_W + canvas_w, cfg.TOOLBAR_H + canvas_h)
         
         vx1, vy1 = world_to_minimap(v_world_x1, v_world_y1)
         vx2, vy2 = world_to_minimap(v_world_x2, v_world_y2)
@@ -140,8 +138,8 @@ class Minimap:
         screen_cx = cfg.SIDEBAR_W + canvas_w / 2
         screen_cy = cfg.TOOLBAR_H + canvas_h / 2
         
-        camera.x = screen_cx - world_x * camera.zoom
-        camera.y = screen_cy - world_y * camera.zoom
+        camera.offset_x = world_x - screen_cx / camera.zoom
+        camera.offset_y = world_y - screen_cy / camera.zoom
         
         self.is_dragging = True
         return True
