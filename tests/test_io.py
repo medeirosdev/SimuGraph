@@ -94,3 +94,10 @@ def test_dot_export(tmp_path):
         assert "digraph" in content
         assert "A" in content
         assert "B" in content
+
+def test_import_top_csv():
+    g = Graph()
+    AdjacencyMatrixIO.import_matrix(g, "/home/medeiros/Projetos/SimuGraph/top.csv")
+    assert g.node_count() == 20
+    assert g.edge_count() > 0
+
