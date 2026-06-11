@@ -1,10 +1,12 @@
 # SimuGraph
 
-![SimuGraph Banner](assets/abstractfluid.jpg)
+![SimuGraph Banner](assets/banner.png)
 
 SimuGraph is an interactive desktop graph simulator and visualizer built with Pygame. It allows users to build, manipulate, and analyze graphs dynamically while watching step-by-step algorithms execute with real-time feedback.
 
-## Existing Features
+---
+
+## Features
 
 ### Interactive Editor and Canvas
 * Creation of nodes and directed/undirected edges using direct mouse inputs.
@@ -12,6 +14,16 @@ SimuGraph is an interactive desktop graph simulator and visualizer built with Py
 * Custom weight values for nodes and edges.
 * Right-click Context Menus for quick properties modification (Rename, Pin/Unpin, Change Color, Set as Source, Edit Weights, Delete).
 * Anti-aliased high-performance rendering supporting camera panning and zooming.
+* Interactive Minimap overlay at the bottom-right corner showing graph bounds and visible viewport rectangle.
+
+### Advanced File I/O and Exporting
+* Full serialization of graph state to JSON-based .sgraph files.
+* GraphML import and export.
+* GEXF export for Gephi.
+* DOT format export for Graphviz rendering.
+* Adjacency Matrix import and export via CSV.
+* PNG screenshot capturing.
+* Algorithm step-by-step recording and GIF export.
 
 ### Graph Generators
 * Random Graph (Erdos-Renyi model)
@@ -33,25 +45,32 @@ SimuGraph is an interactive desktop graph simulator and visualizer built with Py
   * Depth-First Search (DFS)
   * Dijkstra's Shortest Path
   * Bellman-Ford (Shortest Path with negative weights)
+  * Floyd-Warshall All-Pairs Shortest Path
+  * A* Shortest Path (Euclidean heuristic)
   * Kruskal's Minimum Spanning Tree
   * Prim's Minimum Spanning Tree
   * Topological Sort (with cycle checking)
   * Strongly Connected Components (Tarjan's algorithm)
   * Bridges and Articulation Points identification
+  * Greedy Graph Coloring
+  * Eulerian Path and Circuit detection
 
-### System Architecture
-* Complete Undo/Redo command history framework.
-* Theme Engine with color palette presets (Dark, Light, Cyberpunk, etc.).
-* Dynamic grid rendering adapting to camera scales.
+### Plugin System
+* Extensible algorithm loader that discovers custom algorithms in the plugins directory.
+* Custom algorithms automatically register inside the Algorithms menu.
+
+### Accessibility and Keyboard Navigation
+* Tab / Shift+Tab to cycle through nodes, centering camera focus automatically.
+* Enter key to rename the selected node.
+* Arrow keys to move selected nodes in world space.
+* Ctrl+F search bar to find and select nodes by label.
 
 ---
 
 ## Planned Features
 
-* JSON Graph Import/Export: Serialization of graph structures and coordinates.
 * Flow Networks: Edmonds-Karp and Ford-Fulkerson implementations with visual capacity changes and bottleneck tracking.
-* Performance Analysis Panel: Compare the execution times and operations of multiple shortest-path algorithms on the same graph topology.
-* Vertex Label Auto-Generation: Intelligent labeling rules based on degrees or custom properties.
+* Performance Analysis Panel: Compare execution times of multiple shortest-path algorithms on the same graph topology.
 * Customizable Shapes: Support for square, hexagonal, or custom node outlines.
 
 ---
@@ -59,8 +78,9 @@ SimuGraph is an interactive desktop graph simulator and visualizer built with Py
 ## Installation and Execution
 
 ### Requirements
-* Python 3.8 or higher
+* Python 3.10 or higher
 * Pygame
+* Pillow (for GIF export support)
 
 ### Setup
 1. Create a virtual environment and activate it:
@@ -79,6 +99,11 @@ pip install -r requirements.txt
 python main.py
 ```
 
+4. Run the simulator with CLI parameters to auto-load files and execute algorithms:
+```bash
+python main.py --file path/to/graph.sgraph --algo dijkstra --source A
+```
+
 ---
 
 ## Controls Cheatsheet
@@ -87,15 +112,27 @@ python main.py
 * Space: Play/Pause Algorithm Execution
 * Right Arrow: Next Step (Algorithm Mode)
 * Left Arrow: Previous Step (Algorithm Mode)
-* Up Arrow: Increase Algorithm Playback Speed
-* Down Arrow: Decrease Algorithm Playback Speed
+* Shift + Right Arrow: Jump to last step
+* Shift + Left Arrow: Jump to first step
 * Escape: Stop Algorithm / Cancel Action / Exit
 * Ctrl + Z: Undo last modification
 * Ctrl + Y: Redo last modification
 * Ctrl + T: Cycle through themes
+* Ctrl + F: Search node by label
+* Ctrl + S: Save graph
+* Ctrl + Shift + S: Save graph as...
+* Ctrl + O: Open graph
+* Ctrl + E: Export PNG screenshot
+* Ctrl + C: Copy selected subgraph
+* Ctrl + V: Paste subgraph
+* Tab: Cycle selected node forward
+* Shift + Tab: Cycle selected node backward
+* Enter: Rename selected node
+* Arrow keys: Move selected nodes (10px)
 * L: Run Spring Force Layout
 * S: Toggle Grid Snapping
 * D: Toggle Directed Edges
+* F: Fit graph to screen
 * 0: Reset camera zoom
 * ?: Toggle Cheatsheet overlay
 
