@@ -15,12 +15,13 @@ from simugraph.ui.hud import HUD
 from simugraph.ui.dialog import InputDialog, MultiInputDialog
 from simugraph.ui.overlay import CheatsheetOverlay
 from simugraph.ui.context_menu import ContextMenu
+from simugraph.ui.minimap import Minimap
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.core.edge import Edge
 from simugraph.camera import Camera
 from simugraph.algorithms.base import AlgoRunner
-from simugraph.algorithms import BFS, DFS, Dijkstra, BellmanFord, Kruskal, Prim, TopologicalSort
+from simugraph.algorithms import BFS, DFS, Dijkstra, BellmanFord, Kruskal, Prim, TopologicalSort, FloydWarshall, AStar, TarjanSCC, BridgesAndAPs, GraphColoring, EulerianPathCircuit
 from simugraph.commands.history import (
     CommandHistory, AddNodeCommand, RemoveNodeCommand,
     AddEdgeCommand, RemoveEdgeCommand, MoveNodeCommand,
@@ -66,6 +67,13 @@ def distance_to_segment(px: float, py: float, ax: float, ay: float, bx: float, b
 
 
 def main() -> None:
+    import argparse
+    parser = argparse.ArgumentParser(description="SimuGraph Graph Simulator")
+    parser.add_argument("--file", type=str, help="Path to a graph file to open on startup")
+    parser.add_argument("--algo", type=str, help="Algorithm to run on startup")
+    parser.add_argument("--source", type=str, help="Source node label")
+    cli_args, unknown = parser.parse_known_args()
+
     pygame.init()
     pygame.display.set_caption(cfg.WINDOW_TITLE)
 
@@ -90,6 +98,19 @@ def main() -> None:
     
     sidebar = Sidebar()
     toolbar = Toolbar()
+    
+    from simugraph.algorithms.loader import load_plugins
+    plugins = load_plugins()
+    plugin_classes = {}
+    algo_menu = next((m for m in toolbar.menus if m["id"] == "algo"), None)
+    if algo_menu and plugins:
+        algo_menu["items"].append(("sep_plugins", "--- Plugins ---"))
+        for p_cls in plugins:
+            p_inst = p_cls()
+            action_id = f"plugin_{p_cls.__name__}"
+            algo_menu["items"].append((action_id, p_inst.name))
+            plugin_classes[action_id] = p_cls
+
     inspector = Inspector()
     hud = HUD()
     history = CommandHistory()
@@ -101,11 +122,331 @@ def main() -> None:
     # Cheatsheet overlay
     cheatsheet = CheatsheetOverlay()
     show_cheatsheet = False
+    minimap = Minimap()
 
     # Context Menu
     context_menu = ContextMenu()
     algo_source_node_id: str | None = None
     algo_runner = AlgoRunner()
+    centrality_mode = "None"
+    current_filepath = None
+    gif_exporter = None
+    gif_filepath = None
+    last_recorded_step = -1
+
+    import os
+    RECENT_FILES_PATH = os.path.expanduser("~/.simugraph_recent")
+
+    def load_recent_files() -> list[str]:
+        if not os.path.exists(RECENT_FILES_PATH):
+            return []
+        try:
+            with open(RECENT_FILES_PATH, "r") as f:
+                paths = [line.strip() for line in f if line.strip()]
+                return [p for p in paths if os.path.exists(p)][:5]
+        except Exception:
+            return []
+
+    def add_recent_file(filepath: str) -> None:
+        filepath = os.path.abspath(filepath)
+        paths = load_recent_files()
+        if filepath in paths:
+            paths.remove(filepath)
+        paths.insert(0, filepath)
+        paths = paths[:5]
+        try:
+            with open(RECENT_FILES_PATH, "w") as f:
+                for p in paths:
+                    f.write(p + "\n")
+        except Exception:
+            pass
+        toolbar.update_recent_files(paths)
+
+    # Initialize recent files in toolbar menu
+    toolbar.update_recent_files(load_recent_files())
+
+    def open_graph(filepath: str | None = None):
+        nonlocal current_filepath, graph, edge_start_node, algo_source_node_id
+        if not filepath:
+            import tkinter as tk
+            from tkinter import filedialog
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            filepath = filedialog.askopenfilename(
+                filetypes=[("SimuGraph & GraphML files", "*.sgraph;*.graphml"), ("All files", "*.*")],
+                title="Open Graph"
+            )
+            root.destroy()
+            if not filepath:
+                return
+
+        try:
+            if filepath.endswith(".graphml"):
+                from simugraph.io.graphml import GraphMLIO
+                GraphMLIO.import_graphml(graph, filepath)
+            else:
+                with open(filepath, "r") as f:
+                    json_str = f.read()
+                from simugraph.io.serializer import GraphSerializer
+                GraphSerializer.from_json(json_str, graph, camera)
+            
+            current_filepath = filepath
+            add_recent_file(filepath)
+            
+            algo_runner.stop()
+            algo_source_node_id = None
+            edge_start_node = None
+            history.clear()
+        except Exception as e:
+            print(f"Error opening graph: {e}")
+
+    def save_graph():
+        nonlocal current_filepath
+        if current_filepath:
+            try:
+                from simugraph.io.serializer import GraphSerializer
+                json_str = GraphSerializer.to_json(graph, camera)
+                with open(current_filepath, "w") as f:
+                    f.write(json_str)
+                add_recent_file(current_filepath)
+            except Exception as e:
+                print(f"Error saving graph: {e}")
+        else:
+            save_graph_as()
+
+    def save_graph_as():
+        nonlocal current_filepath
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".sgraph",
+            filetypes=[("SimuGraph files", "*.sgraph"), ("All files", "*.*")],
+            title="Save Graph"
+        )
+        root.destroy()
+        if not filepath:
+            return
+            
+        try:
+            from simugraph.io.serializer import GraphSerializer
+            json_str = GraphSerializer.to_json(graph, camera)
+            with open(filepath, "w") as f:
+                f.write(json_str)
+            current_filepath = filepath
+            add_recent_file(filepath)
+        except Exception as e:
+            print(f"Error saving graph as: {e}")
+
+    def export_png():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".png",
+            filetypes=[("PNG images", "*.png"), ("All files", "*.*")],
+            title="Export PNG"
+        )
+        root.destroy()
+        if not filepath:
+            return
+            
+        try:
+            pygame.image.save(canvas.surface, filepath)
+            print(f"Exported PNG to {filepath}")
+        except Exception as e:
+            print(f"Error exporting PNG: {e}")
+
+    def import_matrix():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.askopenfilename(
+            filetypes=[("CSV or TXT files", "*.csv;*.txt"), ("All files", "*.*")],
+            title="Import Adjacency Matrix"
+        )
+        root.destroy()
+        if not filepath:
+            return
+        try:
+            from simugraph.io.matrix import AdjacencyMatrixIO
+            AdjacencyMatrixIO.import_matrix(graph, filepath)
+            
+            algo_runner.stop()
+            algo_source_node_id = None
+            edge_start_node = None
+            history.clear()
+            print(f"Imported adjacency matrix from {filepath}")
+        except Exception as e:
+            print(f"Error importing matrix: {e}")
+
+    def export_matrix():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".csv",
+            filetypes=[("CSV files", "*.csv"), ("TXT files", "*.txt"), ("All files", "*.*")],
+            title="Export Adjacency Matrix"
+        )
+        root.destroy()
+        if not filepath:
+            return
+        try:
+            from simugraph.io.matrix import AdjacencyMatrixIO
+            AdjacencyMatrixIO.export_matrix(graph, filepath)
+            print(f"Exported adjacency matrix to {filepath}")
+        except Exception as e:
+            print(f"Error exporting matrix: {e}")
+
+    def export_dot():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".dot",
+            filetypes=[("DOT files", "*.dot"), ("All files", "*.*")],
+            title="Export DOT"
+        )
+        root.destroy()
+        if not filepath:
+            return
+        try:
+            from simugraph.io.dot_format import DotFormatIO
+            DotFormatIO.export_dot(graph, filepath)
+            print(f"Exported DOT to {filepath}")
+        except Exception as e:
+            print(f"Error exporting DOT: {e}")
+
+    def export_graphml():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".graphml",
+            filetypes=[("GraphML files", "*.graphml"), ("All files", "*.*")],
+            title="Export GraphML"
+        )
+        root.destroy()
+        if not filepath:
+            return
+        try:
+            from simugraph.io.graphml import GraphMLIO
+            GraphMLIO.export_graphml(graph, filepath)
+            print(f"Exported GraphML to {filepath}")
+        except Exception as e:
+            print(f"Error exporting GraphML: {e}")
+
+    def export_gexf():
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".gexf",
+            filetypes=[("GEXF files", "*.gexf"), ("All files", "*.*")],
+            title="Export GEXF"
+        )
+        root.destroy()
+        if not filepath:
+            return
+        try:
+            from simugraph.io.gexf import GexfIO
+            GexfIO.export_gexf(graph, filepath)
+            print(f"Exported GEXF to {filepath}")
+        except Exception as e:
+            print(f"Error exporting GEXF: {e}")
+
+    def start_record_gif():
+        nonlocal gif_exporter, gif_filepath, last_recorded_step
+        if not algo_runner.algorithm:
+            print("No active algorithm running to record!")
+            return
+            
+        import tkinter as tk
+        from tkinter import filedialog
+        root = tk.Tk()
+        root.withdraw()
+        root.attributes("-topmost", True)
+        filepath = filedialog.asksaveasfilename(
+            defaultextension=".gif",
+            filetypes=[("GIF images", "*.gif"), ("All files", "*.*")],
+            title="Record Algorithm GIF"
+        )
+        root.destroy()
+        if not filepath:
+            return
+            
+        from simugraph.io.exporter import GifExporter
+        gif_exporter = GifExporter()
+        gif_exporter.start_recording()
+        gif_filepath = filepath
+        last_recorded_step = -1
+        
+        algo_runner.current_step_idx = 0
+        algo_runner.playing = True
+        print(f"Started recording algorithm animation to {filepath}")
+
+    def change_ui_font_size(delta: int):
+        cfg.FONT_SIZE_UI = max(8, min(36, cfg.FONT_SIZE_UI + delta))
+        cfg.FONT_SIZE_HUD = max(6, min(24, cfg.FONT_SIZE_HUD + delta))
+        
+        if hasattr(toolbar, "reload_fonts"):
+            toolbar.reload_fonts()
+        if hasattr(inspector, "reload_fonts"):
+            inspector.reload_fonts()
+        if hasattr(hud, "reload_fonts"):
+            hud.reload_fonts()
+        if hasattr(cheatsheet, "reload_fonts"):
+            cheatsheet.reload_fonts()
+        if hasattr(context_menu, "reload_fonts"):
+            context_menu.reload_fonts()
+
+    def fit_graph_to_screen():
+        nodes = list(graph.nodes())
+        if not nodes:
+            camera.x = 0.0
+            camera.y = 0.0
+            camera.zoom = 1.0
+            return
+            
+        xs = [n.x for n in nodes]
+        ys = [n.y for n in nodes]
+        min_x, max_x = min(xs), max(xs)
+        min_y, max_y = min(ys), max(ys)
+        
+        graph_cx = (min_x + max_x) / 2
+        graph_cy = (min_y + max_y) / 2
+        
+        canvas_w = cfg.WINDOW_W - cfg.INSPECTOR_W - cfg.SIDEBAR_W
+        canvas_h = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
+        
+        graph_w = max_x - min_x + 80
+        graph_h = max_y - min_y + 80
+        
+        zoom_x = canvas_w / max(1.0, graph_w)
+        zoom_y = canvas_h / max(1.0, graph_h)
+        new_zoom = min(2.0, max(0.2, min(zoom_x, zoom_y)))
+        
+        camera.zoom = new_zoom
+        screen_cx = cfg.SIDEBAR_W + canvas_w / 2
+        screen_cy = cfg.TOOLBAR_H + canvas_h / 2
+        camera.x = screen_cx - graph_cx * new_zoom
+        camera.y = screen_cy - graph_cy * new_zoom
 
     # Monkey patch history to stop algorithm runner on any mutation command
     original_execute = history.execute
@@ -132,9 +473,11 @@ def main() -> None:
         dialog_callback = callback
 
     def clear_graph():
-        nonlocal graph, edge_start_node, algo_source_node_id
+        nonlocal graph, edge_start_node, algo_source_node_id, centrality_mode, current_filepath
         algo_runner.stop()
         algo_source_node_id = None
+        centrality_mode = "None"
+        current_filepath = None
         graph = Graph()
         history.clear()
         edge_start_node = None
@@ -184,6 +527,55 @@ def main() -> None:
     clipboard_edges: list[dict] = []
     clipboard_source_ids: list[str] = []
     paste_count = 0
+
+    if cli_args.file:
+        open_graph(cli_args.file)
+        
+    if cli_args.algo:
+        algo_classes = {
+            "bfs": BFS,
+            "dfs": DFS,
+            "dijkstra": Dijkstra,
+            "bellman": BellmanFord,
+            "floyd": FloydWarshall,
+            "astar": AStar,
+            "kruskal": Kruskal,
+            "prim": Prim,
+            "toposort": TopologicalSort,
+            "scc": TarjanSCC,
+            "bridges": BridgesAndAPs,
+            "coloring": GraphColoring,
+            "eulerian": EulerianPathCircuit,
+        }
+        algo_id = cli_args.algo.lower()
+        algo_class = None
+        if algo_id in algo_classes:
+            algo_class = algo_classes[algo_id]
+        else:
+            for action_id, p_cls in plugin_classes.items():
+                p_inst = p_cls()
+                if algo_id == p_cls.__name__.lower() or algo_id == p_inst.name.lower() or algo_id == action_id.lower() or algo_id == action_id[7:].lower():
+                    algo_class = p_cls
+                    break
+                    
+        if algo_class:
+            algo_instance = algo_class()
+            source_id = None
+            if algo_instance.requires_source:
+                if cli_args.source:
+                    matched = [n for n in graph.nodes() if n.label.lower() == cli_args.source.lower()]
+                    if matched:
+                        source_id = matched[0].id
+                        algo_source_node_id = source_id
+                if not source_id:
+                    all_nodes = list(graph.nodes())
+                    if all_nodes:
+                        all_nodes.sort(key=lambda n: n.label)
+                        source_id = all_nodes[0].id
+                        algo_source_node_id = source_id
+            
+            algo_runner.start(algo_instance, graph, source_id)
+            algo_runner.playing = True
 
     running = True
     while running:
@@ -258,6 +650,50 @@ def main() -> None:
                 elif event.key == pygame.K_y and (event.mod & pygame.KMOD_CTRL):
                     history.redo(graph)
 
+                # Open: Ctrl+O
+                elif event.key == pygame.K_o and (event.mod & pygame.KMOD_CTRL):
+                    open_graph()
+
+                # Save: Ctrl+S
+                elif event.key == pygame.K_s and (event.mod & pygame.KMOD_CTRL):
+                    if event.mod & pygame.KMOD_SHIFT:
+                        save_graph_as()
+                    else:
+                        save_graph()
+
+                # Export PNG: Ctrl+E
+                elif event.key == pygame.K_e and (event.mod & pygame.KMOD_CTRL):
+                    export_png()
+
+                # Search: Ctrl+F
+                elif event.key == pygame.K_f and (event.mod & pygame.KMOD_CTRL):
+                    active_dialog = InputDialog("Search Node", initial_value="", placeholder="Node Label")
+                    def make_search_cb():
+                        def search_cb(query_str):
+                            if not query_str:
+                                return
+                            matches = []
+                            for node in graph.nodes():
+                                if query_str.lower() in node.label.lower():
+                                    matches.append(node)
+                            if matches:
+                                for node in graph.nodes():
+                                    node.selected = False
+                                for node in matches:
+                                    node.selected = True
+                                target = matches[0]
+                                canvas_w = cfg.WINDOW_W - cfg.INSPECTOR_W - cfg.SIDEBAR_W
+                                canvas_h = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
+                                screen_cx = cfg.SIDEBAR_W + canvas_w / 2
+                                screen_cy = cfg.TOOLBAR_H + canvas_h / 2
+                                camera.x = screen_cx - target.x * camera.zoom
+                                camera.y = screen_cy - target.y * camera.zoom
+                                print(f"Search found {len(matches)} matching node(s). Centered on '{target.label}'.")
+                            else:
+                                print(f"No nodes matching '{query_str}' found.")
+                        return search_cb
+                    dialog_callback = make_search_cb()
+
                 # Theme cycling: Ctrl+T
                 elif event.key == pygame.K_t and (event.mod & pygame.KMOD_CTRL):
                     names = list(cfg.THEMES)
@@ -270,13 +706,19 @@ def main() -> None:
 
                 # Zoom in: PageUp, Keypad Plus, Equals/Plus
                 elif event.key in (pygame.K_PAGEUP, pygame.K_KP_PLUS, pygame.K_EQUALS):
-                    mx, my = pygame.mouse.get_pos()
-                    camera.zoom_at(mx, my, cfg.ZOOM_FACTOR_KEY)
+                    if event.mod & pygame.KMOD_CTRL:
+                        change_ui_font_size(1)
+                    else:
+                        mx, my = pygame.mouse.get_pos()
+                        camera.zoom_at(mx, my, cfg.ZOOM_FACTOR_KEY)
 
                 # Zoom out: PageDown, Keypad Minus, Minus
                 elif event.key in (pygame.K_PAGEDOWN, pygame.K_KP_MINUS, pygame.K_MINUS):
-                    mx, my = pygame.mouse.get_pos()
-                    camera.zoom_at(mx, my, 1.0 / cfg.ZOOM_FACTOR_KEY)
+                    if event.mod & pygame.KMOD_CTRL:
+                        change_ui_font_size(-1)
+                    else:
+                        mx, my = pygame.mouse.get_pos()
+                        camera.zoom_at(mx, my, 1.0 / cfg.ZOOM_FACTOR_KEY)
 
                 # Shortcuts to switch tools
                 elif event.key == pygame.K_n:
@@ -300,6 +742,11 @@ def main() -> None:
                 elif event.key == pygame.K_d:
                     directed_edges = not directed_edges
 
+                # Fit graph to screen: F
+                elif event.key == pygame.K_f:
+                    if not (event.mod & pygame.KMOD_CTRL):
+                        fit_graph_to_screen()
+
                 # Auto-layout: L
                 elif event.key == pygame.K_l:
                     if layout_steps_remaining == 0:
@@ -320,6 +767,74 @@ def main() -> None:
                         history.execute(RemoveNodesCommand(selected_nodes, list(incident_edges)), graph)
                         dragging_node = None
                         edge_start_node = None
+
+                # Accessibility cycling: Tab
+                elif event.key == pygame.K_TAB:
+                    all_nodes = list(graph.nodes())
+                    if all_nodes:
+                        all_nodes.sort(key=lambda n: n.label)
+                        sel_idx = -1
+                        for idx, n in enumerate(all_nodes):
+                            if n.selected:
+                                sel_idx = idx
+                                break
+                        if event.mod & pygame.KMOD_SHIFT:
+                            new_idx = (sel_idx - 1) % len(all_nodes)
+                        else:
+                            new_idx = (sel_idx + 1) % len(all_nodes)
+                        for n in all_nodes:
+                            n.selected = False
+                        all_nodes[new_idx].selected = True
+                        
+                        # Center camera on selected node
+                        canvas_w = cfg.WINDOW_W - cfg.INSPECTOR_W - cfg.SIDEBAR_W
+                        canvas_h = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
+                        screen_cx = cfg.SIDEBAR_W + canvas_w / 2
+                        screen_cy = cfg.TOOLBAR_H + canvas_h / 2
+                        camera.x = screen_cx - all_nodes[new_idx].x * camera.zoom
+                        camera.y = screen_cy - all_nodes[new_idx].y * camera.zoom
+
+                # Accessibility select / rename: Enter
+                elif event.key in (pygame.K_RETURN, pygame.K_KP_ENTER):
+                    selected_nodes = [n for n in graph.nodes() if n.selected]
+                    if len(selected_nodes) == 1:
+                        target_node = selected_nodes[0]
+                        active_dialog = InputDialog("Rename Node", initial_value=target_node.label, placeholder="Label")
+                        def make_rename_cb(node_to_edit):
+                            return lambda val_str: history.execute(
+                                RenameNodeCommand(node_to_edit.id, node_to_edit.label, val_str if val_str else node_to_edit.label),
+                                graph
+                            )
+                        dialog_callback = make_rename_cb(target_node)
+
+                # Accessibility arrow keys to move node
+                elif event.key in (pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT):
+                    selected_nodes = [n for n in graph.nodes() if n.selected]
+                    if selected_nodes:
+                        dx, dy = 0, 0
+                        step = 10
+                        if event.key == pygame.K_UP:
+                            dy = -step
+                        elif event.key == pygame.K_DOWN:
+                            dy = step
+                        elif event.key == pygame.K_LEFT:
+                            dx = -step
+                        elif event.key == pygame.K_RIGHT:
+                            dx = step
+                        
+                        if dx != 0 or dy != 0:
+                            moves = {}
+                            for n in selected_nodes:
+                                start_pos = (n.x, n.y)
+                                end_x = n.x + dx
+                                end_y = n.y + dy
+                                if snap_enabled:
+                                    end_x = round(end_x / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
+                                    end_y = round(end_y / cfg.NODE_SNAP_GRID) * cfg.NODE_SNAP_GRID
+                                moves[n.id] = (start_pos, (end_x, end_y))
+                                n.x = end_x
+                                n.y = end_y
+                            history.push(MoveNodesCommand(moves))
 
                 # Copy subgraph: Ctrl+C
                 elif event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL):
@@ -428,9 +943,45 @@ def main() -> None:
                         if action_id == "exit":
                             running = False
                         elif action_id == "clear":
-                            graph = Graph()
-                            history.clear()
-                            edge_start_node = None
+                            clear_graph()
+                        elif action_id == "open":
+                            open_graph()
+                        elif action_id == "save":
+                            save_graph()
+                        elif action_id == "export_png":
+                            export_png()
+                        elif action_id == "import_matrix":
+                            import_matrix()
+                        elif action_id == "export_matrix":
+                            export_matrix()
+                        elif action_id == "export_dot":
+                            export_dot()
+                        elif action_id == "export_graphml":
+                            export_graphml()
+                        elif action_id == "export_gexf":
+                            export_gexf()
+                        elif action_id == "record_gif":
+                            start_record_gif()
+                        elif action_id.startswith("recent_"):
+                            idx = int(action_id.split("_")[1])
+                            paths = load_recent_files()
+                            if 0 <= idx < len(paths):
+                                open_graph(paths[idx])
+                    elif menu_id == "view":
+                        if action_id == "theme_dark":
+                            cfg.set_theme("dark")
+                        elif action_id == "theme_light":
+                            cfg.set_theme("light")
+                        elif action_id == "theme_colorblind":
+                            cfg.set_theme("colorblind")
+                        elif action_id == "font_increase":
+                            change_ui_font_size(1)
+                        elif action_id == "font_decrease":
+                            change_ui_font_size(-1)
+                        elif action_id == "fit_screen":
+                            fit_graph_to_screen()
+                        elif action_id == "zoom_reset":
+                            camera.reset_zoom()
                     elif menu_id == "algo":
                         def run_algo(algo_class):
                             nonlocal algo_source_node_id, articulation_points, bridges
@@ -466,6 +1017,10 @@ def main() -> None:
                             run_algo(Dijkstra)
                         elif action_id == "bellman":
                             run_algo(BellmanFord)
+                        elif action_id == "floyd":
+                            run_algo(FloydWarshall)
+                        elif action_id == "astar":
+                            run_algo(AStar)
                         elif action_id == "kruskal":
                             run_algo(Kruskal)
                         elif action_id == "prim":
@@ -473,23 +1028,17 @@ def main() -> None:
                         elif action_id == "toposort":
                             run_algo(TopologicalSort)
                         elif action_id == "scc":
-                            algo_runner.stop()
-                            from simugraph.algorithms.scc import find_sccs
-                            sccs = find_sccs(graph)
-                            color_map = {}
-                            for comp_idx, comp in enumerate(sccs):
-                                color = cfg.SCC_PALETTE[comp_idx % len(cfg.SCC_PALETTE)]
-                                for nid in comp:
-                                    color_map[nid] = color
-                            history.execute(ColorComponentsCommand(color_map), graph)
+                            run_algo(TarjanSCC)
                         elif action_id == "bridges":
-                            algo_runner.stop()
-                            from simugraph.algorithms.connectivity import find_bridges_and_articulation_points
-                            ap_ids, br_ids = find_bridges_and_articulation_points(graph)
-                            articulation_points.clear()
-                            articulation_points.update(ap_ids)
-                            bridges.clear()
-                            bridges.update(br_ids)
+                            run_algo(BridgesAndAPs)
+                        elif action_id == "coloring":
+                            run_algo(GraphColoring)
+                        elif action_id == "eulerian":
+                            run_algo(EulerianPathCircuit)
+                        elif action_id.startswith("plugin_"):
+                            p_cls = plugin_classes.get(action_id)
+                            if p_cls:
+                                run_algo(p_cls)
                     elif menu_id == "generate":
                         def make_gen_callback(generator_func):
                             def cb(vals):
@@ -549,7 +1098,9 @@ def main() -> None:
                 ins_action = inspector.handle_click(mx, my, sel_node, sel_edge, algo_runner)
                 if ins_action:
                     action_type, val = ins_action
-                    if action_type == "export_results":
+                    if action_type == "centrality_mode":
+                        centrality_mode = val
+                    elif action_type == "export_results":
                         active_dialog = InputDialog("Export Results", initial_value="results.txt", placeholder="filename.txt")
                         def make_export_cb():
                             return lambda val_str: algo_runner.export_results(val_str if val_str else "results.txt")
@@ -581,6 +1132,10 @@ def main() -> None:
                 if clicked_tool:
                     active_tool = clicked_tool
                     edge_start_node = None
+                    continue
+
+                # Check minimap clicks fourth
+                if minimap.handle_click(mx, my, graph, camera):
                     continue
 
                 if event.button == 1:  # Left click
@@ -801,6 +1356,7 @@ def main() -> None:
 
             elif event.type == pygame.MOUSEBUTTONUP:
                 if event.button == 1:
+                    minimap.is_dragging = False
                     selection_box_start = None
                     selection_box_current = None
                     if dragging_node and drag_start_pos:
@@ -826,7 +1382,9 @@ def main() -> None:
 
             elif event.type == pygame.MOUSEMOTION:
                 mx, my = event.pos
-                if is_panning:
+                if minimap.is_dragging:
+                    minimap.handle_click(mx, my, graph, camera)
+                elif is_panning:
                     camera.pan(event.rel[0], event.rel[1])
                 elif selection_box_start is not None:
                     selection_box_current = (mx, my)
@@ -905,7 +1463,7 @@ def main() -> None:
         sel_box = None
         if selection_box_start and selection_box_current:
             sel_box = (*selection_box_start, *selection_box_current)
-        canvas.draw(camera, graph, edge_start_node, sel_box, articulation_points, bridges, algo_runner.current_state, algo_source_node_id)
+        canvas.draw(camera, graph, edge_start_node, sel_box, articulation_points, bridges, algo_runner.current_state, algo_source_node_id, centrality_mode)
         ui_surf.fill((0, 0, 0, 0))
         
         # Draw Sidebar
@@ -919,7 +1477,7 @@ def main() -> None:
         selected_edges = [e for e in graph.edges() if e.selected]
         sel_node = selected_nodes[0] if selected_nodes else None
         sel_edge = selected_edges[0] if selected_edges else None
-        inspector.draw(ui_surf, sel_node, sel_edge, algo_runner)
+        inspector.draw(ui_surf, graph, sel_node, sel_edge, algo_runner, centrality_mode)
         
         # Draw floating algorithm status banner if active
         if algo_runner.algorithm:
@@ -957,6 +1515,9 @@ def main() -> None:
                 step_surf = hud.font_algo_banner.render(step_str, True, cfg.THEME["accent"])
                 sw_w, sw_h = step_surf.get_size()
                 ui_surf.blit(step_surf, (bx + banner_w - sw_w - 15, by + (banner_h - sw_h) // 2))
+
+        # Draw Minimap
+        minimap.draw(ui_surf, graph, camera)
 
         # Draw HUD status bar
         hud.draw(ui_surf, active_tool, snap_enabled, directed_edges, graph, camera, clock.get_fps())
@@ -1025,6 +1586,23 @@ def main() -> None:
         # ----------------------------------------------------------------
         screen.blit(canvas.surface, (0, 0))
         screen.blit(ui_surf, (0, 0))
+        
+        if gif_exporter and gif_exporter.recording:
+            current_step = algo_runner.current_step_idx
+            if current_step != last_recorded_step:
+                gif_exporter.record_frame(screen)
+                last_recorded_step = current_step
+            
+            # Check if animation completed or stopped
+            if not algo_runner.playing or current_step == len(algo_runner.states) - 1:
+                gif_exporter.record_frame(screen)
+                dur = int(1000.0 / max(0.1, algo_runner.speed_fps))
+                gif_exporter.stop_and_save(gif_filepath, duration_ms=dur)
+                print(f"Saved algorithm animation GIF to {gif_filepath}")
+                gif_exporter = None
+                gif_filepath = None
+                last_recorded_step = -1
+
         pygame.display.flip()
 
     pygame.quit()

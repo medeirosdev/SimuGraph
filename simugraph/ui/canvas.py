@@ -49,13 +49,14 @@ class Canvas:
         articulation_points: set[str] | None = None,
         bridges: set[str] | None = None,
         algo_state: AlgoState | None = None,
-        source_node_id: str | None = None
+        source_node_id: str | None = None,
+        centrality_mode: str | None = None
     ) -> None:
         """Clear the surface and redraw everything for one frame."""
         self.surface.fill((0, 0, 0, 0))
         self._draw_grid(camera)
         self._draw_edges(camera, graph, edge_start_node, bridges=bridges, algo_state=algo_state)
-        self._draw_nodes(camera, graph, articulation_points=articulation_points, algo_state=algo_state, source_node_id=source_node_id)
+        self._draw_nodes(camera, graph, articulation_points=articulation_points, algo_state=algo_state, source_node_id=source_node_id, centrality_mode=centrality_mode)
         if selection_box:
             self._draw_selection_box(selection_box)
 
@@ -197,7 +198,7 @@ class Canvas:
                 # Determine curve offset: if only 1 edge, straight line. Otherwise offset curves.
                 if num_edges == 1:
                     # Straight line
-                    if bridges and edge.id in bridges:
+                    if (bridges and edge.id in bridges) or (algo_state and hasattr(algo_state, "bridges") and edge.id in algo_state.bridges):
                         pygame.draw.line(self.surface, (255, 107, 107), (su_x, sy_u), (sv_x, sy_v), 5)
                     pygame.draw.line(self.surface, color, (su_x, sy_u), (sv_x, sy_v), edge_w)
                     
@@ -244,7 +245,7 @@ class Canvas:
                         py = (1 - t)**2 * sy_u + 2 * (1 - t) * t * cy + t**2 * sy_v
                         points.append((px, py))
                     
-                    if bridges and edge.id in bridges:
+                    if (bridges and edge.id in bridges) or (algo_state and hasattr(algo_state, "bridges") and edge.id in algo_state.bridges):
                         pygame.draw.lines(self.surface, (255, 107, 107), False, points, 5)
                     pygame.draw.lines(self.surface, color, False, points, edge_w)
                     
@@ -335,7 +336,8 @@ class Canvas:
         graph: Graph,
         articulation_points: set[str] | None = None,
         algo_state: AlgoState | None = None,
-        source_node_id: str | None = None
+        source_node_id: str | None = None,
+        centrality_mode: str | None = None
     ) -> None:
         """Draw all nodes in the graph using anti-aliased primitives."""
         import pygame.gfxdraw
@@ -345,12 +347,40 @@ class Canvas:
             except FileNotFoundError:
                 self.font_node = pygame.font.SysFont("monospace", cfg.FONT_SIZE_NODE)
 
+        # Compute centrality values if active and not in an active algorithm
+        centrality_vals = {}
+        min_val, max_val, val_range = 0.0, 1.0, 1.0
+        if centrality_mode and centrality_mode != "None" and not algo_state:
+            from simugraph.core.properties import GraphProperties
+            props = GraphProperties(graph)
+            if centrality_mode == "degree":
+                centrality_vals = props.degree_centrality()
+            elif centrality_mode == "closeness":
+                centrality_vals = props.closeness_centrality()
+            elif centrality_mode == "betweenness":
+                centrality_vals = props.betweenness_centrality()
+            
+            if centrality_vals:
+                vals = list(centrality_vals.values())
+                min_val = min(vals) if vals else 0.0
+                max_val = max(vals) if vals else 1.0
+                val_range = max_val - min_val
+                if val_range == 0.0:
+                    val_range = 1.0
+
         # Get mouse position in world space for hover detection
         mx, my = pygame.mouse.get_pos()
         m_wx, m_wy = camera.screen_to_world(mx, my)
 
         for node in graph.nodes():
-            s_radius = int(max(4.0, node.radius * camera.zoom))
+            # Adjust radius based on centrality if active
+            radius_factor = 1.0
+            is_centrality_active = (node.id in centrality_vals)
+            if is_centrality_active:
+                norm = (centrality_vals[node.id] - min_val) / val_range
+                radius_factor = 0.6 + norm * 0.8  # scale radius from 60% to 140%
+
+            s_radius = int(max(4.0, node.radius * radius_factor * camera.zoom))
             sx_float, sy_float = camera.world_to_screen(node.x, node.y)
             sx, sy = int(sx_float), int(sy_float)
 
@@ -362,7 +392,14 @@ class Canvas:
             dist_to_mouse = ((node.x - m_wx)**2 + (node.y - m_wy)**2)**0.5
             is_hovered = dist_to_mouse <= node.radius
 
-            if algo_state and node.id in algo_state.visited:
+            if is_centrality_active:
+                norm = (centrality_vals[node.id] - min_val) / val_range
+                r = int(40 + norm * 215)
+                g = int(150 - norm * 90)
+                b = int(220 - norm * 160)
+                fill_color = (r, g, b)
+                stroke_color = cfg.THEME["node_stroke"]
+            elif algo_state and node.id in algo_state.visited:
                 fill_color = (80, 220, 120)
                 stroke_color = cfg.THEME["node_stroke"]
             elif algo_state and node.id in algo_state.frontier:
@@ -380,6 +417,16 @@ class Canvas:
             else:
                 fill_color = node.color
                 stroke_color = cfg.THEME["node_stroke"]
+
+            if algo_state:
+                if algo_state.scc_groups:
+                    for scc_idx, scc_set in enumerate(algo_state.scc_groups):
+                        if node.id in scc_set:
+                            fill_color = cfg.SCC_PALETTE[scc_idx % len(cfg.SCC_PALETTE)]
+                            break
+                elif algo_state.colors and node.id in algo_state.colors:
+                    color_idx = algo_state.colors[node.id]
+                    fill_color = cfg.COLOR_PALETTE[color_idx % len(cfg.COLOR_PALETTE)]
 
             if node.id == source_node_id:
                 stroke_color = (80, 180, 255)
@@ -406,7 +453,8 @@ class Canvas:
             pygame.gfxdraw.aacircle(self.surface, sx, sy, s_radius, stroke_color)
             
             # Articulation Point indicator (glowing target ring)
-            if articulation_points and node.id in articulation_points:
+            is_ap = (articulation_points and node.id in articulation_points) or (algo_state and hasattr(algo_state, "articulation_points") and node.id in algo_state.articulation_points)
+            if is_ap:
                 pygame.draw.circle(self.surface, (255, 204, 0), (sx, sy), s_radius + 5, width=2)
             
             # Subtle inner ring if selected

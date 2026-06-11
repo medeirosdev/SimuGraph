@@ -6,10 +6,12 @@ from __future__ import annotations
 from typing import TYPE_CHECKING, Any
 import pygame
 import simugraph.settings as cfg
+from simugraph.ui.properties_panel import PropertiesPanel
 
 if TYPE_CHECKING:
     from simugraph.core.node import Node
     from simugraph.core.edge import Edge
+    from simugraph.core.graph import Graph
 
 
 class Inspector:
@@ -25,20 +27,25 @@ class Inspector:
         self.height = cfg.WINDOW_H - cfg.TOOLBAR_H - cfg.HUD_H
         self.rect = pygame.Rect(self.x, self.y, self.width, self.height)
 
-        # Cache fonts
+        self.reload_fonts()
+
+    def reload_fonts(self) -> None:
         try:
             self.font_title = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_HUD)
             self.font_body = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_UI)
         except FileNotFoundError:
             self.font_title = pygame.font.SysFont("monospace", cfg.FONT_SIZE_HUD)
             self.font_body = pygame.font.SysFont("monospace", cfg.FONT_SIZE_UI)
+        if hasattr(self, "properties_panel"):
+            self.properties_panel.reload_fonts()
 
         # Interactive rects
         self.pin_toggle_rect = pygame.Rect(0, 0, 0, 0)
         self.color_rects: list[tuple[pygame.Color, pygame.Rect]] = []
         self.export_button_rect = pygame.Rect(0, 0, 0, 0)
+        self.properties_panel = PropertiesPanel(self.x, self.y, self.width)
 
-    def draw(self, surface: pygame.Surface, selected_node: Node | None, selected_edge: Edge | None, algo_runner: Any | None = None) -> None:
+    def draw(self, surface: pygame.Surface, graph: Graph, selected_node: Node | None, selected_edge: Edge | None, algo_runner: Any | None = None, centrality_mode: str | None = None) -> None:
         # Clear interactive rects
         self.pin_toggle_rect = pygame.Rect(0, 0, 0, 0)
         self.color_rects.clear()
@@ -63,9 +70,7 @@ class Inspector:
         elif selected_edge:
             self._draw_edge_properties(surface, selected_edge)
         else:
-            # Empty state
-            info_text = "Select a node or edge\nto view properties."
-            self._render_multiline_text(surface, info_text, self.x + 15, self.y + 60, cfg.THEME["text_dim"])
+            self.properties_panel.draw(surface, graph, centrality_mode)
 
     def _draw_node_properties(self, surface: pygame.Surface, node: Node) -> None:
         y_offset = self.y + 60
@@ -278,5 +283,11 @@ class Inspector:
             for color, rect in self.color_rects:
                 if rect.collidepoint(mx, my):
                     return ("color", (color.r, color.g, color.b))
+
+        # Check properties panel click
+        if not selected_node and not selected_edge and (not algo_runner or not algo_runner.algorithm):
+            res = self.properties_panel.handle_click(mx, my)
+            if res:
+                return res
 
         return None

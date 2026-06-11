@@ -23,30 +23,34 @@ class CheatsheetOverlay:
             self.height
         )
 
+        self.reload_fonts()
+
+        self.shortcuts = [
+            ("Esc", "Exit / Cancel"),
+            ("Ctrl + T", "Cycle Theme"),
+            ("Ctrl + Z", "Undo Action"),
+            ("Ctrl + Y", "Redo Action"),
+            ("Ctrl + O", "Open Graph"),
+            ("Ctrl + S", "Save Graph"),
+            ("Ctrl + E", "Export PNG"),
+            ("Ctrl + F", "Search Nodes"),
+            ("Tab", "Cycle Nodes (Acc.)"),
+            ("Enter", "Select Node (Acc.)"),
+            ("Arrows", "Move Node (Acc.)"),
+            ("F", "Fit Graph to Screen"),
+            ("0 (zero)", "Reset View Zoom"),
+            ("S", "Toggle Grid Snap"),
+            ("D", "Toggle Directed Edge"),
+            ("? / /", "Toggle Cheatsheet"),
+        ]
+
+    def reload_fonts(self) -> None:
         try:
             self.font_title = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_HUD + 2)
             self.font_body = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_UI)
         except FileNotFoundError:
             self.font_title = pygame.font.SysFont("monospace", cfg.FONT_SIZE_HUD + 2)
             self.font_body = pygame.font.SysFont("monospace", cfg.FONT_SIZE_UI)
-
-        # Cheatsheet items: (Shortcut, Action description)
-        self.shortcuts = [
-            ("Esc", "Exit / Cancel"),
-            ("Ctrl + T", "Cycle Theme"),
-            ("Ctrl + Z", "Undo Action"),
-            ("Ctrl + Y", "Redo Action"),
-            ("N", "Node Tool"),
-            ("E", "Edge Tool"),
-            ("R", "Remove Tool"),
-            ("V", "Select / Move Tool"),
-            ("S", "Toggle Grid Snap"),
-            ("D", "Toggle Directed Edge"),
-            ("0 (zero)", "Reset View Zoom"),
-            ("+ / PageUp", "Zoom In"),
-            ("- / PageDown", "Zoom Out"),
-            ("? / /", "Toggle Cheatsheet"),
-        ]
 
     def draw(self, surface: pygame.Surface) -> None:
         # 1. Dim background

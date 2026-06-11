@@ -19,6 +19,9 @@ class HUD:
         self.height = cfg.HUD_H
         self.rect = pygame.Rect(0, cfg.WINDOW_H - self.height, cfg.WINDOW_W, self.height)
         
+        self.reload_fonts()
+
+    def reload_fonts(self) -> None:
         try:
             self.font = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_HUD)
         except FileNotFoundError:

@@ -27,30 +27,57 @@ class Toolbar:
                 "items": [
                     ("open", "Open... (Ctrl+O)"),
                     ("save", "Save (Ctrl+S)"),
+                    ("export_png", "Export PNG... (Ctrl+E)"),
+                    ("record_gif", "Record Algorithm GIF..."),
+                    ("import_matrix", "Import Adjacency Matrix..."),
+                    ("export_matrix", "Export Adjacency Matrix..."),
+                    ("export_dot", "Export DOT (Graphviz)..."),
+                    ("export_graphml", "Export GraphML..."),
+                    ("export_gexf", "Export GEXF (Gephi)..."),
                     ("clear", "Clear Graph"),
                     ("exit", "Exit"),
                 ]
             },
             {
+                "id": "view",
+                "label": "View",
+                "rect": pygame.Rect(80, 4, 60, self.height - 8),
+                "items": [
+                    ("theme_dark", "Dark Theme"),
+                    ("theme_light", "Light Theme"),
+                    ("theme_colorblind", "Colorblind Theme"),
+                    ("sep_font", "--- Font Size ---"),
+                    ("font_increase", "Increase UI Size (Ctrl++)"),
+                    ("font_decrease", "Decrease UI Size (Ctrl+-)"),
+                    ("sep_cam", "--- Camera ---"),
+                    ("fit_screen", "Fit Graph to Screen (F)"),
+                    ("zoom_reset", "Reset Zoom (0)"),
+                ]
+            },
+            {
                 "id": "algo",
                 "label": "Algorithms",
-                "rect": pygame.Rect(80, 4, 110, self.height - 8),
+                "rect": pygame.Rect(150, 4, 110, self.height - 8),
                 "items": [
                     ("bfs", "Breadth-First Search (BFS)"),
                     ("dfs", "Depth-First Search (DFS)"),
                     ("dijkstra", "Dijkstra's Algorithm"),
                     ("bellman", "Bellman-Ford Algorithm"),
+                    ("floyd", "Floyd-Warshall Algorithm"),
+                    ("astar", "A* Shortest Path"),
                     ("kruskal", "Kruskal's MST"),
                     ("prim", "Prim's MST"),
                     ("toposort", "Topological Sort"),
-                    ("scc", "SCC Color Coding"),
-                    ("bridges", "Bridges & Cut Vertices"),
+                    ("scc", "Strongly Connected Components"),
+                    ("bridges", "Bridges & Articulation Points"),
+                    ("coloring", "Graph Coloring"),
+                    ("eulerian", "Eulerian Path/Cycle"),
                 ]
             },
             {
                 "id": "generate",
                 "label": "Generate",
-                "rect": pygame.Rect(200, 4, 90, self.height - 8),
+                "rect": pygame.Rect(270, 4, 90, self.height - 8),
                 "items": [
                     ("gen_random", "Random Graph (Erdős–Rényi)..."),
                     ("gen_complete", "Complete Graph..."),
@@ -66,7 +93,9 @@ class Toolbar:
         self.active_menu_id: str | None = None
         self.dropdown_rect: pygame.Rect | None = None
 
-        # Cache font
+        self.reload_fonts()
+
+    def reload_fonts(self) -> None:
         try:
             self.font = pygame.font.Font(cfg.FONT_MONO_PATH, cfg.FONT_SIZE_UI)
         except FileNotFoundError:
@@ -140,6 +169,10 @@ class Toolbar:
                 item_y = y + 4 + idx * row_h
                 item_rect = pygame.Rect(x + 4, item_y, max_w - 8, row_h)
                 
+                if "sep" in item_id:
+                    pygame.draw.line(surface, cfg.THEME["panel_border"], (x + 10, item_y + row_h // 2), (x + max_w - 10, item_y + row_h // 2), 1)
+                    continue
+
                 is_item_hover = item_rect.collidepoint(mx, my)
                 if is_item_hover:
                     pygame.draw.rect(surface, cfg.THEME["context_hover"], item_rect, border_radius=4)
@@ -165,6 +198,8 @@ class Toolbar:
             idx = (my - (self.height + 4)) // row_h
             if 0 <= idx < len(menu["items"]):
                 action_id = menu["items"][idx][0]
+                if "sep" in action_id:
+                    return None
                 clicked_menu = self.active_menu_id
                 self.active_menu_id = None
                 self.dropdown_rect = None
@@ -186,3 +221,26 @@ class Toolbar:
             self.dropdown_rect = None
             
         return None
+
+    def update_recent_files(self, paths: list[str]) -> None:
+        import os
+        file_menu = next(m for m in self.menus if m["id"] == "file")
+        items = [
+            ("open", "Open... (Ctrl+O)"),
+            ("save", "Save (Ctrl+S)"),
+            ("export_png", "Export PNG... (Ctrl+E)"),
+            ("record_gif", "Record Algorithm GIF..."),
+            ("import_matrix", "Import Adjacency Matrix..."),
+            ("export_matrix", "Export Adjacency Matrix..."),
+            ("export_dot", "Export DOT (Graphviz)..."),
+            ("export_graphml", "Export GraphML..."),
+            ("export_gexf", "Export GEXF (Gephi)..."),
+            ("clear", "Clear Graph"),
+        ]
+        if paths:
+            items.append(("sep", "--- Recent ---"))
+            for idx, p in enumerate(paths):
+                name = os.path.basename(p)
+                items.append((f"recent_{idx}", name))
+        items.append(("exit", "Exit"))
+        file_menu["items"] = items
