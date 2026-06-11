@@ -69,7 +69,9 @@ class GraphMLIO:
             if key_id and attr_name:
                 key_map[key_id] = attr_name
                 
-        graph_elem = root.find(".//{*}graph") or root.find("graph")
+        graph_elem = root.find(".//{*}graph")
+        if graph_elem is None:
+            graph_elem = root.find("graph")
         if graph_elem is None:
             return
             
