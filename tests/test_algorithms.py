@@ -3,7 +3,7 @@ import pytest
 from simugraph.core.graph import Graph
 from simugraph.core.node import Node
 from simugraph.core.edge import Edge
-from simugraph.algorithms import BFS, DFS, Dijkstra, TarjanSCC, Kruskal
+from simugraph.algorithms import BFS, DFS, Dijkstra, TarjanSCC, Kruskal, AStar, EulerianPathCircuit
 
 def create_simple_graph() -> Graph:
     g = Graph()
@@ -80,3 +80,45 @@ def test_kruskal():
     assert len(final_state.highlighted_edges) == 2
     assert "e1" in final_state.highlighted_edges
     assert "e2" in final_state.highlighted_edges
+
+def test_astar():
+    g = Graph()
+    n1 = Node(id="n1", label="A", x=0.0, y=0.0)
+    n2 = Node(id="n2", label="B", x=100.0, y=0.0)
+    n3 = Node(id="n3", label="C", x=100.0, y=100.0)
+    g.add_node(n1)
+    g.add_node(n2)
+    g.add_node(n3)
+    
+    g.add_edge(Edge(id="e1", u="n1", v="n2", weight=10.0, directed=False))
+    g.add_edge(Edge(id="e2", u="n2", v="n3", weight=5.0, directed=False))
+    
+    algo = AStar()
+    # Path from A to C
+    states = algo.steps(g, source="n1")
+    assert len(states) > 0
+    final_state = states[-1]
+    assert final_state.path == ["n1", "n2", "n3"]
+    assert "e1" in final_state.highlighted_edges
+    assert "e2" in final_state.highlighted_edges
+
+def test_eulerian():
+    g = Graph()
+    n1 = Node(id="n1", label="A")
+    n2 = Node(id="n2", label="B")
+    n3 = Node(id="n3", label="C")
+    g.add_node(n1)
+    g.add_node(n2)
+    g.add_node(n3)
+    
+    # Triangle (Eulerian Circuit)
+    g.add_edge(Edge(id="e1", u="n1", v="n2", directed=False))
+    g.add_edge(Edge(id="e2", u="n2", v="n3", directed=False))
+    g.add_edge(Edge(id="e3", u="n3", v="n1", directed=False))
+    
+    algo = EulerianPathCircuit()
+    states = algo.steps(g)
+    assert len(states) > 0
+    final_state = states[-1]
+    assert len(final_state.highlighted_edges) == 3
+

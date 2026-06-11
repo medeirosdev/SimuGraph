@@ -159,13 +159,9 @@ class EulerianPathCircuit(StepAlgorithm):
         highlighted_edges = set()
         for i in range(len(final_path) - 1):
             u, v = final_path[i], final_path[i+1]
-            edge = graph.get_edge(u, v)
-            if edge:
-                highlighted_edges.add(edge.id)
-            else:
-                edge = graph.get_edge(v, u)
-                if edge and not edge.directed:
-                    highlighted_edges.add(edge.id)
+            edges = graph.edges_between(u, v)
+            if edges:
+                highlighted_edges.add(edges[0].id)
 
         states.append(AlgoState(
             path=final_path,

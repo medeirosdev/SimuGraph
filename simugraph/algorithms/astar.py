@@ -128,13 +128,9 @@ class AStar(StepAlgorithm):
 
                 # Edge weight
                 weight = 1.0
-                edge = graph.get_edge(current, neighbor_id)
-                if edge:
-                    weight = edge.weight
-                else:
-                    edge = graph.get_edge(neighbor_id, current)
-                    if edge and not edge.directed:
-                        weight = edge.weight
+                edges = graph.edges_between(current, neighbor_id)
+                if edges:
+                    weight = min(e.weight for e in edges)
 
                 tentative_g = g_score[current] + weight
                 if tentative_g < g_score[neighbor_id]:
@@ -168,13 +164,10 @@ class AStar(StepAlgorithm):
             highlighted_edges = set()
             for i in range(len(path) - 1):
                 u, v = path[i], path[i+1]
-                edge = graph.get_edge(u, v)
-                if edge:
-                    highlighted_edges.add(edge.id)
-                else:
-                    edge = graph.get_edge(v, u)
-                    if edge and not edge.directed:
-                        highlighted_edges.add(edge.id)
+                edges = graph.edges_between(u, v)
+                if edges:
+                    best_edge = min(edges, key=lambda e: e.weight)
+                    highlighted_edges.add(best_edge.id)
 
             states.append(AlgoState(
                 visited=closed_set.copy(),
