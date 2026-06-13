@@ -38,7 +38,8 @@ class GraphSerializer:
                 "y": node.y,
                 "color": list(node.color),
                 "radius": node.radius,
-                "pinned": node.pinned
+                "pinned": node.pinned,
+                "shape": node.shape
             })
             
         for edge in graph.edges():

@@ -36,9 +36,9 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
     
     # Load banner image
     banner_surf = None
-    if os.path.exists("assets/abstractfluid.jpg"):
+    if os.path.exists("assets/banner.png"):
         try:
-            raw_banner = pygame.image.load("assets/abstractfluid.jpg").convert_alpha()
+            raw_banner = pygame.image.load("assets/banner.png").convert_alpha()
             banner_surf = scale_cover(raw_banner, left_w, h)
         except Exception:
             pass
@@ -78,6 +78,7 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
     
     right_start_x = left_w + 50
     btn_rect = pygame.Rect(right_start_x, h - 230, 260, 52)
+    credits_area_rect = pygame.Rect(right_start_x, h - 95, 260, 50)
     
     def draw_splash(target_screen: pygame.Surface, alpha: int):
         # Create temp surface for alpha blitting
@@ -114,20 +115,24 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
             splash_surf.blit(feat_surf, (right_start_x + 18, bullet_y))
             bullet_y += 35
             
-        # 3. Interactive button
+        # 3. Interactive button and Credits hover
         mx, my = pygame.mouse.get_pos()
         is_hover = btn_rect.collidepoint(mx, my)
+        credits_hover = credits_area_rect.collidepoint(mx, my)
         
         # Gradient colors based on hover state
         if is_hover:
             color1, color2 = (110, 180, 255), (200, 140, 255)
+        else:
+            color1, color2 = (90, 160, 255), (180, 120, 255)
+
+        if is_hover or credits_hover:
             # Hover cursor change hint
             try:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
             except Exception:
                 pass
         else:
-            color1, color2 = (90, 160, 255), (180, 120, 255)
             try:
                 pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_ARROW)
             except Exception:
@@ -149,6 +154,16 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
         tip_surf = footer_font.render("Pressione ENTER ou ESPAÇO para entrar", True, (100, 105, 130))
         splash_surf.blit(tip_surf, (right_start_x + (btn_rect.width - tip_surf.get_width()) // 2, h - 150))
         
+        # Draw developer credits (clickable)
+        credits_color = (130, 180, 255) if credits_hover else (130, 135, 160)
+        credits_surf = footer_font.render("Guilherme de Medeiros - UNICAMP", True, credits_color)
+        credits_surf2 = footer_font.render("Matemática Aplicada e Computacional", True, (90, 95, 115))
+        
+        cx1 = right_start_x + (btn_rect.width - credits_surf.get_width()) // 2
+        cx2 = right_start_x + (btn_rect.width - credits_surf2.get_width()) // 2
+        splash_surf.blit(credits_surf, (cx1, h - 90))
+        splash_surf.blit(credits_surf2, (cx2, h - 70))
+
         # Set alpha if fading
         if alpha < 255:
             splash_surf.set_alpha(alpha)
@@ -171,9 +186,13 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     should_exit = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1 and btn_rect.collidepoint(event.pos):
-                    should_exit = True
-                    
+                if event.button == 1:
+                    if btn_rect.collidepoint(event.pos):
+                        should_exit = True
+                    elif credits_area_rect.collidepoint(event.pos):
+                        import webbrowser
+                        webbrowser.open("https://www.linkedin.com/in/guilhermedemedeiros/")
+                        
         if should_exit:
             break
             
@@ -192,8 +211,12 @@ def show_splash_screen(screen: pygame.Surface, clock: pygame.time.Clock) -> None
                 if event.key in (pygame.K_RETURN, pygame.K_KP_ENTER, pygame.K_SPACE):
                     should_exit = True
             elif event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1 and btn_rect.collidepoint(event.pos):
-                    should_exit = True
+                if event.button == 1:
+                    if btn_rect.collidepoint(event.pos):
+                        should_exit = True
+                    elif credits_area_rect.collidepoint(event.pos):
+                        import webbrowser
+                        webbrowser.open("https://www.linkedin.com/in/guilhermedemedeiros/")
                     
         if should_exit:
             break

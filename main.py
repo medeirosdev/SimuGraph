@@ -311,6 +311,67 @@ def main() -> None:
         except Exception as e:
             print(f"Error exporting matrix: {e}")
 
+    def import_clipboard():
+        from simugraph.io.clipboard_io import ClipboardIO
+        text = ClipboardIO.get_clipboard()
+        if not text:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showerror("Import Error", "Clipboard is empty!")
+            root.destroy()
+            return
+            
+        try:
+            nonlocal graph, algo_source_node_id, edge_start_node, centrality_mode
+            ClipboardIO.import_tuples(graph, text, directed_edges)
+            algo_runner.stop()
+            algo_source_node_id = None
+            edge_start_node = None
+            centrality_mode = "None"
+            history.clear()
+            fit_graph_to_screen()
+            
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showinfo("Import Successful", "Graph imported successfully from clipboard!")
+            root.destroy()
+        except Exception as e:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showerror("Import Error", f"Failed to parse clipboard text:\n{e}")
+            root.destroy()
+
+    def export_clipboard():
+        from simugraph.io.clipboard_io import ClipboardIO
+        try:
+            text = ClipboardIO.export_tuples(graph)
+            ClipboardIO.set_clipboard(text)
+            
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showinfo("Export Successful", "Graph copied to clipboard as Python tuples!")
+            root.destroy()
+        except Exception as e:
+            import tkinter as tk
+            from tkinter import messagebox
+            root = tk.Tk()
+            root.withdraw()
+            root.attributes("-topmost", True)
+            messagebox.showerror("Export Error", f"Failed to export to clipboard:\n{e}")
+            root.destroy()
+
     def export_dot():
         import tkinter as tk
         from tkinter import filedialog
@@ -422,8 +483,8 @@ def main() -> None:
     def fit_graph_to_screen():
         nodes = list(graph.nodes())
         if not nodes:
-            camera.x = 0.0
-            camera.y = 0.0
+            camera.offset_x = 0.0
+            camera.offset_y = 0.0
             camera.zoom = 1.0
             return
             
@@ -448,8 +509,8 @@ def main() -> None:
         camera.zoom = new_zoom
         screen_cx = cfg.SIDEBAR_W + canvas_w / 2
         screen_cy = cfg.TOOLBAR_H + canvas_h / 2
-        camera.x = screen_cx - graph_cx * new_zoom
-        camera.y = screen_cy - graph_cy * new_zoom
+        camera.offset_x = graph_cx - screen_cx / new_zoom
+        camera.offset_y = graph_cy - screen_cy / new_zoom
 
     # Monkey patch history to stop algorithm runner on any mutation command
     original_execute = history.execute
@@ -667,6 +728,14 @@ def main() -> None:
                 # Export PNG: Ctrl+E
                 elif event.key == pygame.K_e and (event.mod & pygame.KMOD_CTRL):
                     export_png()
+
+                # Clipboard Copy (Python Tuples): Ctrl+Shift+C
+                elif event.key == pygame.K_c and (event.mod & pygame.KMOD_CTRL) and (event.mod & pygame.KMOD_SHIFT):
+                    export_clipboard()
+
+                # Clipboard Paste (Python Tuples): Ctrl+Shift+V
+                elif event.key == pygame.K_v and (event.mod & pygame.KMOD_CTRL) and (event.mod & pygame.KMOD_SHIFT):
+                    import_clipboard()
 
                 # Search: Ctrl+F
                 elif event.key == pygame.K_f and (event.mod & pygame.KMOD_CTRL):
@@ -957,6 +1026,10 @@ def main() -> None:
                             import_matrix()
                         elif action_id == "export_matrix":
                             export_matrix()
+                        elif action_id == "import_clipboard":
+                            import_clipboard()
+                        elif action_id == "export_clipboard":
+                            export_clipboard()
                         elif action_id == "export_dot":
                             export_dot()
                         elif action_id == "export_graphml":

@@ -20,6 +20,7 @@ class Node:
     pinned: bool = False      # when True, spring layout ignores this node
     selected: bool = False
     weight: float = 0.0
+    shape: str = "circle"      # "circle", "square", "hexagon"
 
     def __post_init__(self) -> None:
         # Ensure color is always a plain tuple (not list)

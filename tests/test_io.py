@@ -101,3 +101,38 @@ def test_import_top_csv():
     assert g.node_count() == 20
     assert g.edge_count() > 0
 
+
+def test_clipboard_io():
+    from simugraph.io.clipboard_io import ClipboardIO
+    
+    g = Graph()
+    n1 = Node(id="n1", label="A")
+    n2 = Node(id="n2", label="B")
+    g.add_node(n1)
+    g.add_node(n2)
+    e1 = Edge(u="n1", v="n2", weight=3.5, directed=True)
+    g.add_edge(e1)
+    
+    exported = ClipboardIO.export_tuples(g)
+    # Check that exported text is correct
+    assert "A" in exported
+    assert "B" in exported
+    assert "3.5" in exported
+    
+    # Import back
+    g2 = Graph()
+    ClipboardIO.import_tuples(g2, exported)
+    
+    assert g2.node_count() == 2
+    assert g2.edge_count() == 1
+    
+    nodes = list(g2.nodes())
+    labels = {n.label for n in nodes}
+    assert "A" in labels
+    assert "B" in labels
+    
+    edge = list(g2.edges())[0]
+    assert edge.weight == 3.5
+    assert edge.directed
+
+
